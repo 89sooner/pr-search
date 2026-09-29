@@ -2718,3 +2718,15 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] **DEV-787(open)** — Repository workspace가 0건에서 완화 후보를 그리지 않는다. 화면이 붙인 `kind:`·`repo:`를 거르고 후보를 화면 조작에 대응시키는 설계가 필요하다.
 - [ ] **DEV-788(open)** — 구간 조회(`/api/v1/sequence-ranges`) `q`의 `kind:`가 결과와 무관하게 500이다. 지원(대상 좁히기)할지 400으로 거절할지 제품 결정.
 - [ ] **22차 자원 정리** — 사용자가 2026-09-29에 「모두 남겨 둠」을 골랐다. 컨테이너 `prs-kr-postgres`·`prs-kr-redis`·`prs-kr-es`, 워크트리 `kind-relaxation`·`cr128-record`·scratchpad `prefix`(main 저장소 목록에 등록).
+
+## 23차 뒤 남은 것 (2026-09-30)
+
+- [x] **A~E와 CR-134** — PR #253~#260을 main `0d14990`까지 병합했다(PR마다 PR CI와 병합 커밋 main CI 확인, C의 병합 커밋 main CI만 빨갰고 CR-134로 복구). 원장 6.120~6.127장.
+- [ ] **새 배포본과 사내 적용(사용자)** — A~E를 담은 배포본은 사내 운영 판 pilot.20 상태에서 격리 업그레이드 리허설로 검증한다. 적용 뒤 `agent-context/upstream-feedback.md` CR-128 항목의 재조회 목록과 23차 반영 주석의 확인 항목을 조회해 적는다.
+- [ ] **blame 켜기(사용자)** — 사내 GHES의 버전·`Commit.blame` 지원·App 권한을 확인한 뒤 `SOURCE_BLAME_ENABLED=true`(RUNBOOK 7.L). 켜기 전에는 PIPE에 blame 능력이 광고되지 않는다.
+- [ ] **CR-136 권고 채택(사용자)** — 검토서 6.4절의 승인 대기 항목: 채택 여부, 선택 코드 항목(인증서 만료 지표, 재기동 없는 인증서 재적재, `prsctl`의 PIPE 하위 명령), PIPE 쪽 변경, 2-B·3-A 재개 조건, RUNBOOK 편입과 `purge` 정기 작업.
+- [ ] **DEV-797(open)** — 트리 비교 목록(`/diff?listing=tree`)의 한 페이지가 읽는 디렉터리 수에 상한이 없다. `/paths`의 걷기와 같은 상한을 거는 후속 후보.
+- [ ] **DEV-790·DEV-791(open)** — 웹 프록시가 search-api 응답의 `X-Correlation-Id`를 자기 값으로 덮고, search-api에 닿지 못한 502를 기록하지 않는다.
+- [ ] **DEV-792·DEV-798·DEV-799(open, 시험 안정성)** — `cancel-race` backfill의 간헐 실패, 수신 게이트웨이 부하 시험의 CI p95, 통합 시험 파일들의 저장소 잔재.
+- [ ] **DEV-795(open)** — 예전 파일 조회(`offset` 없음)의 1MB 초과 파일이 GHES 응답에 따라 권한 오류처럼 보일 수 있다(웹은 `offset` 경로라 영향 없음).
+- [ ] **23차 자원 정리(사용자)** — 컨테이너 `prs-b8-postgres`·`prs-b8-redis`·`prs-b8-es`와 그 안의 시험 DB들, 워크트리 `cr129-errors`~`cr136-auth-review`와 기록 워크트리, 세션 scratchpad 넷.

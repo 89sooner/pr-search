@@ -3587,3 +3587,73 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 ### References
 
 - PR #251과 병합 기록 PR, 변경 대장 CR-128, 원장 6.119장, PIPE 인계 D-23.
+
+## 23차 (2026-09-29~30) — A~E(CR-129~CR-136) 병합: 오류 세 건·Source 총량 제한 해소·하위 파일 검색·PIPE blame·인증 검토서
+
+### Goal
+
+사용자 지시(2026-09-29, 기준 main `3f1c4c0`): A 남은 오류 세 건(DEV-786 → DEV-788 → DEV-787), B Diff·Time-lapse의 코드 크기·파일 수·커밋 수 제한 해소, C Files & folders의 하위 파일명 검색, D PIPE용 GraphQL blame, E mTLS·인증 간소화 검토서(구현 없음). 기능마다 CR·WP·PR로 나눠 구현·검증·리뷰·main 반영까지 마친 뒤 다음 기능으로 간다. 새 Release 발행과 사내 적용은 하지 않는다.
+
+### Current state
+
+- **main = `0d14990`**(CR-136, PR #260)과 이 마감 기록 PR. 23차 PR: #253(`e581b52`)·#254(`5850232`)·#255(`c33ea25`)·#256(`aa29c5c`)·#257(`2e94b71`)·#258(`a02a145`)·#259(`311fdb0`)·#260(`0d14990`). 모두 PR CI와 병합 커밋의 main CI를 거쳤고, C의 병합 커밋 main CI만 빨갰다(CR-134로 복구).
+- 사내 적용 NOT RUN, 새 번들·Release 없음. blame 기능 게이트는 기본 꺼짐.
+- 23차는 세션 넷에 걸쳤다(컨텍스트 한도로 세 번 끊겨 전사 이어가기로 재개): `6bcb6431…`(A), `7c00c46a…`(B), `6f9f3d27…`(C·CR-134·D의 packages/github와 search-api), `ec6de473…`(D의 PIPE·문서·검증과 E).
+
+### Decisions
+
+- **병합 기록은 다음 기능 PR의 첫 커밋에 싣고, 마지막 기능만 별도 기록·인계 PR로** — 사용자 결정(PR #253 질문).
+- **DEV-788은 지원이 아니라 설명 있는 400으로** — 사용자 결정. 구간 조회의 완전한 `kind:` 지원은 별도 제품 기능이다.
+- **C의 경로 목록(`/paths`)은 PIPE에 싣지 않는다** — `/paths`는 FR-INT-001 고정 목록 밖의 세션 조회라 PIPE strict schema·capability에 보이는 변경이 없다(`/read/source/…/paths` 404를 시험으로 건다).
+- **main CI를 빨갛게 한 DEV-796은 작은 PR로 먼저 고친다** — 사용자 결정. 그래서 D는 CR-135로 번호가 밀렸다.
+- **「D를 빠르게 끝내기」** — 사용자가 「언제 끝나? … 얼른 origin/main에 배포해서 써야해」에서 고른 방향. 독립 리뷰는 코드 하나로 줄이고 문서는 기계 점검(검증기·표 칸 수·새 ID·사내 식별자)으로 대신했다. 실제 경로는 PIPE 통합 하네스에 실제 전송 리더를 꽂은 시험으로 확인했고, 빌드 산출물을 배포 환경 변수로 띄운 확인은 한계로 적었다.
+- **blame은 기능 게이트 뒤, 기본 꺼짐, PSI-1.0 유지** — 꺼진 배포의 exchange·`/context`가 이전과 같다는 사실을 `blame-disabled.test.ts`가 건다(CONTRACT_DIFF D-26의 §8 예외 근거).
+- **GraphQL은 source blame 한 조회에만(ADR-027)** — 서버 소유 고정 query, 조회 문서만 POST, GraphQL 한도는 REST 토큰 상태와 분리, 재시도 없음. 코드 리뷰 [중]을 받아 「GraphQL을 부르는 제품 코드는 `source-blame.ts` 한 곳이고 고정 query 상수만 싣는다」는 회귀 가드를 더했다. revision은 소문자로 보내고, 커밋이 아닌 SHA는 404다.
+- **E의 권고는 안 1** — 현재 구조와 PSI-1.0 유지, 인증서 관리만 자동화. 구현은 승인 대기이고 임시 해제 스위치는 없다.
+
+### 이번에 배운 것
+
+- **`/clear` 뒤에도 앞 세션이 띄운 서브에이전트가 계속 돌고 보고가 새 세션으로 온다** — 이어받으면 먼저 ListAgents로 확인하고, 에이전트가 끝날 때까지 그 워크트리에 쓰지 않는다. 지시문 원문은 이전 세션 `subagents/agent-*.jsonl`의 첫 user 메시지에 있다.
+- **PIPE 통합 하네스의 source 리더는 대역(Proxy)이다** — GHE까지 실제 전송을 거치려면 하네스의 `sourceReader` 옵션에 실제 `GitHubTransport` → GHE 대역 리더를 넣는다(`blame-real-path.test.ts`).
+- **「쓰기 없음」 가드는 「프록시 없음」을 지키지 못한다** — 읽기 전용 통로라도 호출자의 문서를 그대로 넘기면 App 토큰 범위로 읽힌다. 호출자와 고정 query를 거는 가드가 따로 필요하다.
+- **게이트 요약의 rc 정규식 `[a-z-]+`는 `a11y`·`e2e` 줄을 읽지 못한다** — 6.124~6.126장 기록 스크립트의 `allOk`는 두 단계를 검사하지 않았다(요약 줄과 로그 집계로 따로 확인했다). 다음에는 `[a-z0-9-]+`로 쓴다.
+- **변수로 만든 `rm` 경로는 안전 검사가 막고 명령 전체가 실행되지 않는다** — 절대 경로를 글자로 적거나 `"${VAR:?}"`를 쓴다.
+- **분리 세션으로 띄운 게이트를 멈출 때는 프로세스 그룹을 죽인다**(`kill -TERM -- -<pgid>`) — 멈춘 게이트의 DB는 버리고 새 DB로 다시 돌린다. 게이트 도중에 소스를 고치면 그 실행은 증거가 아니다.
+- **문서 검증기는 등록 전 CR의 언급을 경고로 센다**(「CR referenced but not registered」) — 번호를 먼저 적은 문서는 등록 커밋에서 경고가 사라지는지 본다.
+- **공유 DB를 쓰는 통합 전량은 앞선 파일의 잔재를 본다**(DEV-796·799) — 「활성 저장소 넷」 같은 고정 수를 가정한 시험은 실제 수를 스윕과 같은 질의로 센다.
+- **gh 2.4.0의 `gh pr view --json`에는 `headRefOid`가 없다** — head SHA는 `gh api repos/89sooner/pr-search/pulls/<n> --jq .head.sha`로 본다.
+
+### Changed files
+
+- A: 공개 search-api의 공통 오류 처리와 PIPE의 서버 오류 분류(CR-129), 구간 조회 `q`의 `kind:` 400(CR-130), 작업 공간 0건 화면의 추천(CR-131).
+- B: `packages/github`(요청별 accept·signal·timeoutMs, 원시 창, 동시 상한), `apps/search-api/src/source`(offset·`listing=tree`·`related=all`·요청 기한·취소·감사), `apps/web`(source 계산 Worker·작업·트리), PIPE D-25.
+- C: `apps/search-api/src/source`(`sourcePaths`·걷기 상한), `packages/github`(`treeRecursive`), `apps/web`(`lib/source-paths.ts`·`components/source/SourceTree.tsx`).
+- CR-134: `apps/pipeline-worker/integration/reconcile/manual-run.test.ts`.
+- D: `packages/github/src/{config,transport,source-blame,source-reader,index}.ts`·`testing/{mock-ghe,mock-source}.ts`, `apps/search-api/src/{config,runtime,index}.ts`·`source/{routes,service}.ts`, `packages/contracts/src/{source,error-codes}.ts`, `apps/search-api/src/integrations/pipe/{operations,routes}.ts`, PIPE handoff(OpenAPI·operation map·예시 셋·manifest·D-26), 회귀 가드 둘, `deploy/single-host/{.env.example,compose.yml,RUNBOOK.md}`.
+- E: `docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md`(신규), `docs/README.md`.
+- 문서: 변경 대장 CR-129~CR-136, SRS(v2.53까지), API 계약(v0.54까지), ADR-027, WP-110~WP-117, 원장 6.120~6.127장·DEV-786~DEV-799.
+
+### Commands
+
+- 게이트: scratchpad `gates.sh <worktree> <label> <testdb>`를 `setsid nohup`으로 분리해 띄우고, Monitor로 요약 파일의 단계 줄·DONE·프로세스 사라짐을 감시한다. 환경 `7c00c46a…/scratchpad/env-b8.sh`, Node 22(`nvm use 22`).
+- 통합 시험 단독: 새 DB(`docker exec prs-b8-postgres createdb -U prs <이름>`) → `POSTGRES_TEST_DB=<이름> npx vitest run --config vitest.integration.config.ts <파일>`.
+- 수정 전 실패: 시험 파일을 main과 같은 트리의 워크트리에 복사해 돌리고, 절대 경로로 지운다.
+- 변이: scratchpad `mut-*.mjs`(원본 바이트 백업 → 치환 → 시험 → 되돌림 → sha256 대조).
+- 문서: 앵커가 정확히 한 번 맞는 편집 도우미 `docs/lib.mjs`(개행 감지), 검증기 `validate_srs_prd_env.py --root <dir> [--strict] --json`을 main과 같은 트리와 비교.
+- CI 대기와 병합: `gh api "repos/89sooner/pr-search/actions/runs?head_sha=<sha>&event=<pull_request|push>"`를 완료까지 20초마다 보고, 병합은 `gh api -X PUT repos/89sooner/pr-search/pulls/<n>/merge -f merge_method=squash -f sha=<head>` 뒤 병합 커밋 트리와 PR head 트리를 대조한다.
+
+### Next steps
+
+1. 사용자: A~E를 담은 새 배포본과 사내 적용(사내 운영 판 pilot.20 상태에서 격리 업그레이드 리허설로 검증).
+2. 사용자: blame을 켜기 전에 사내 GHES의 버전·`Commit.blame` 지원·App 권한 확인(RUNBOOK 7.L).
+3. 사용자: CR-136 검토서의 권고 채택 여부와 6.4절 승인 대기 항목.
+4. 후속 후보(사용자 판단): DEV-797, DEV-790·791, DEV-792·798·799, DEV-795.
+5. 사용자: 23차 자원 정리.
+
+### Risks/gotchas
+
+- current-handoff 「Open boundary」와 같다. blame을 켠 뒤 사내 GHES가 `Commit.blame`을 모르면 501 `SOURCE_BLAME_UNSUPPORTED`, App 권한이 모자라면 503 `SOURCE_PERMISSION_REQUIRED`다 — 켜기 전에 파일 하나로 확인한다.
+
+### References
+
+- PR #253~#260, 변경 대장 CR-129~CR-136, 원장 6.120~6.127장, PIPE 인계 D-24·D-25·D-26, 검토서 `docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md`.

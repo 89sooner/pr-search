@@ -2,7 +2,7 @@
 
 ## CR-136 — PIPE 연동 인증 간소화 검토서: 현재 다섯 층을 코드·DB·배포·계약과 대조하고 네 안을 비교해 안 1(현재 구조 유지, 인증서 관리만 자동화)을 권고한다 — 구현 없음 (2026-09-29)
 
-- 유형: 검토(구현 없음). 요구사항·계약·코드·운영 설정은 바뀌지 않는다. 새 FR·NFR·API·ENT·JOB·오류 코드는 없다. 새 문서 하나(`docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md`, draft v0.1). 안정 ID 재번호화 0건. 상태: **open** — worktree `/home/roqkf/pr-search-wt/cr136-auth-review`(브랜치 `docs/cr136-auth-review`), 기준 main `311fdb0`.
+- 유형: 검토(구현 없음). 요구사항·계약·코드·운영 설정은 바뀌지 않는다. 새 FR·NFR·API·ENT·JOB·오류 코드는 없다. 새 문서 하나(`docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md`, draft v0.1). 안정 ID 재번호화 0건. 상태: **closed** — main `0d14990`(PR #260 squash 병합, 2026-09-30). worktree `/home/roqkf/pr-search-wt/cr136-auth-review`(브랜치 `docs/cr136-auth-review`), 기준 main `311fdb0`.
 - 요청: 사용자 지시(2026-09-29, 23차) 7번. mTLS와 인증 절차 간소화는 검토서만 쓴다 — 인증 코드나 운영 설정을 바꾸지 않고 임시 인증 해제 스위치도 만들지 않는다. 현재 구조를 HTTPS(통신 암호화와 서버 확인)·mTLS(요청하는 PIPE 서버 확인)·assertion과 identity binding(어느 사용자의 요청인지)·grant와 회수·접근 범위(짧은 수명과 저장소 권한)·GHE 자격(PR Search가 GHE에서 읽는 별도 인증)으로 나눠 설명하고, 네 안(인증서 관리만 자동화 / mTLS 제거 / 조직 SSO·OAuth 단기 토큰 / 내부 IP만 신뢰)을 설정·양쪽 변경·사용자 추적·저장소 권한·회수·재생 공격·토큰 탈취·인증서 결속 grant의 대체·이전과 되돌리기로 비교해 권고 하나를 제시하되 구현은 승인 대기로 남긴다. 「TLS 옵션 두 개만 끄면 끝난다」고 설명하지 않고 「내부망이므로 누구나 모든 자료를 읽어도 된다」를 전제로 삼지 않는다.
 - 결론: 권고는 **안 1** — 현재 구조와 PSI-1.0 계약을 그대로 두고 인증서의 발급·갱신·배포·만료 감시만 자동화한다. SRS·ADR-025·계약·마이그레이션은 바뀌지 않는다. 안 2는 요청 서명형(2-B)만, 사내 CA가 client 인증서를 운영할 수 없다고 확인될 때 새 ADR로 연다. 안 3은 토큰 교환(3-A)만, 사내 IdP의 위임 기능이 확인되면 새 ADR로 비교한다. 2-A(bearer grant)·2-C(고정 API 키)·3-B(SSO 토큰 전달)·3-C(GHE OAuth 토큰 전달)·안 4(내부 IP만 신뢰)는 기각한다. 「TLS 옵션 두 개」가 틀린 이유: `requestCert`를 끄면 소켓의 `authorized`가 `false`가 되어 모든 요청이 401 `CLIENT_AUTH_FAILED`이고, 그 검사를 지나도 grant 행은 인증서 지문 없이 저장되지 않는다(마이그레이션 033의 NOT NULL·CHECK) — 인증이 가벼워지는 것이 아니라 연동이 멈춘다.
 - 범위: 검토서 한 파일, `docs/README.md`의 진입점 한 줄, 작업 패키지 WP-117, 원장 머리 절·3장·6.127장, 이 CR.
@@ -429,7 +429,7 @@ CR-103에 이어 사용자가 결정한 네 번째 항목: 검색 결과의 "Mor
 
 | CR ID | 날짜 | 유형 | 트리거 | 요약 | 영향 ID | 영향 문서 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| CR-136 | 2026-09-29 | 검토(구현 없음) | 사용자 지시 2026-09-29(23차) 7번 | **PIPE 연동 인증 간소화 검토서** — 현재 다섯 층(HTTPS·mTLS·assertion과 binding·grant와 회수·접근 범위, GHE 자격)을 코드·DB·배포·계약과 대조하고 네 안을 비교해 안 1(현재 구조와 PSI-1.0 유지, 인증서 관리만 자동화)을 권고한다. 2-A·2-C·3-B·3-C·안 4는 기각, 2-B·3-A는 전제가 확인되면 새 ADR로. 구현은 승인 대기 | 없음(새 FR·API·ENT·오류 코드 없음) | `docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md`(신규), `docs/README.md`, WP-117, 원장 | open — 브랜치 `docs/cr136-auth-review` |
+| CR-136 | 2026-09-29 | 검토(구현 없음) | 사용자 지시 2026-09-29(23차) 7번 | **PIPE 연동 인증 간소화 검토서** — 현재 다섯 층(HTTPS·mTLS·assertion과 binding·grant와 회수·접근 범위, GHE 자격)을 코드·DB·배포·계약과 대조하고 네 안을 비교해 안 1(현재 구조와 PSI-1.0 유지, 인증서 관리만 자동화)을 권고한다. 2-A·2-C·3-B·3-C·안 4는 기각, 2-B·3-A는 전제가 확인되면 새 ADR로. 구현은 승인 대기 | 없음(새 FR·API·ENT·오류 코드 없음) | `docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md`(신규), `docs/README.md`, WP-117, 원장 | closed — main `0d14990`(PR #260), 원장 6.127 |
 | CR-135 | 2026-09-29 | 범위 추가 | 사용자 지시 2026-09-29(23차) 6번 | **PIPE가 선택한 파일·리비전의 blame(줄 구간별 귀속 커밋)을 받을 조회가 없었다 — Time-lapse는 인접 리비전 비교의 추정이다.** GitHub GraphQL `Commit.blame`을 서버 소유 고정 query 하나로 묻는 별도 조회(API-SRC-006 세션, API-INT-015 PIPE `read.source.blame`)를 더한다. 기본 꺼짐(`SOURCE_BLAME_ENABLED`), 권한 먼저, 조회 문서만 POST, GraphQL 한도 분리, 미지원 501·권한 503·한도 429·일시 장애 502, 지어내지 않음, 웹 화면 없음, `PSI-1.0` 유지(capability `source_blame:read`는 켜졌을 때만) | FR-SRC-005 · FR-INT-001 AC-5 · API-SRC-006 · API-INT-015 · ADR-027 · WP-116 | SRS · PRD · 용어집 · 매트릭스 · ADR · API 계약 · 백엔드 · 보안 · 인프라 · 관측성 · PIPE 공유 계약·BFF 지시서 · WP · 원장 · RUNBOOK · `.env.example`·compose · PIPE 인계(D-26) | closed — main `311fdb0`(PR #259), 원장 6.126 |
 | CR-134 | 2026-09-29 | correction | 사용자 결정 2026-09-29(23차 진행 중) — DEV-796 | **수동 대조 취소 시험이 통합 전량에서만 가끔 `completed`로 실패해 CR-133 병합 커밋의 main CI가 두 번 빨갰다.** 냉시작 스윕이 DB의 활성 저장소 전부를 도는데 시험은 자기 저장소 넷에서 기다림을 풀었다(공유 DB의 잔재 저장소). 스윕과 같은 질의로 센 활성 저장소 수만큼 기다린다 — 시험 한 곳 | DEV-796 · DEV-798 · DEV-799 · WP-115 | WP · 원장 | closed — main `a02a145`(PR #258), 원장 6.125 |
 | CR-133 | 2026-09-29 | 요구사항 변경 | 사용자 지시 2026-09-29(23차) 5번 | **Files & folders의 입력이 루트 항목의 이름만 걸러 열지 않은 폴더의 파일과 같은 이름의 다른 파일을 찾지 못했다.** 고정 revision의 파일 경로 목록(API-SRC-005, 재귀 한 번·잘리거나 늦으면 하위 트리 걷기)을 한 번 읽어 메모리에서 거르고, 결과를 누르면 같은 revision의 그 파일로 이어진다. 다 읽기 전 「결과 없음」 금지, 진행·취소·이어 읽기 | FR-SRC-001 AC-2·AC-5 · API-SRC-005 · WP-114 · DEV-797 | SRS · 용어집 · 매트릭스 · 화면 상태 · 흐름 · 컴포넌트 · 와이어프레임 · QA 체크리스트 · API 계약 · 백엔드 · 프런트엔드 · 보안 · WP · 원장 · RUNBOOK | closed — main `2e94b71`(PR #257), 원장 6.124 |
@@ -2569,7 +2569,9 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - [x] 전달: 작업 패키지 v2.92 → v2.93(WP-117 절·상태 표), 원장 v6.142 → v6.143(머리 절, 3장 WP-117, 6.127장).
 - [x] 인계: PIPE 계약은 바뀌지 않는다.
 - 문서 검증기(`validate_srs_prd_env.py`): 기준선(main)과 오류·경고 목록이 두 모드 모두 같다 — 기본 오류 3·경고 12, `--strict` 오류 6·경고 12. 검토서가 CR-136을 언급한 채 등록 전이던 동안 생긴 경고 1건은 이 등록으로 사라졌다.
-- [ ] 병합과 CR 종료 — 마감 기록·인계 PR이 적는다(23차 결정: 마지막 기능만 별도 기록·인계 PR).
+- 상태: **closed**(2026-09-30).
+
+**병합 판정.** PR #260(base `main`, 최종 head `9807a18`, 첫 커밋은 CR-135 병합 기록)의 CI(run 36570268483)는 verify·integration 모두 첫 시도에 success다. 인용 대조, 독립 문서 리뷰와 그 반영, 문서 검증기 기준선 비교는 원장 6.127장에 있다. 사용자 승인(2026-09-30, 그 세션에서 PR #260에 대해 받았다)으로 squash 병합했다 — main `0d14990`, 트리는 PR head와 같다(`d20ab0c…`). 병합 커밋의 main CI(run 36593131677)도 verify·integration 모두 첫 시도에 success다. 이 기록은 23차 마감 기록·인계 PR의 첫 커밋이다. 권고의 채택과 구현은 승인 대기다.
 
 ### CR-135 cascade — PIPE용 GraphQL blame
 
