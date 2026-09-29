@@ -1,5 +1,5 @@
 import { GitHubApiError, type GitHubSourceReader, type RepoRef, type SourceCallOptions, type SourceContent, type SourceGitCommit, type SourceGitTree, type SourceRestCommit } from '@prs/github';
-import type { SourceComparison, SourceEntry, SourceFile, SourceHistory, SourcePathEntry, SourcePaths, SourceTree } from '@prs/contracts';
+import type { SourceBlame, SourceComparison, SourceEntry, SourceFile, SourceHistory, SourcePathEntry, SourcePaths, SourceTree } from '@prs/contracts';
 import type { Client } from '@elastic/elasticsearch';
 import { applyMandatoryScopeFilter, assertNoShardFailures, search, type AccessScope } from '@prs/es';
 import { compareTreePaths, walkTreeDiff, type TreeDiffEntry } from './tree-diff.js';
@@ -327,4 +327,19 @@ export async function sourcePaths(reader: GitHubSourceReader, ref: RepoRef, inpu
   }, null, root, { after: input.after, limit: SOURCE_PATHS_WALK_PAGE, maxTreeCalls: input.walkTreeCalls ?? SOURCE_PATHS_WALK_TREE_CALLS, entries: true, ...(options.signal ? { signal: options.signal } : {}) });
   const paths = page.changes.flatMap((change) => { const entry = change.entry === undefined ? null : pathEntry(change.path, change.entry.type, change.entry.mode); return entry === null ? [] : [entry]; });
   return { ...head, paths, next_after: page.after, incomplete: page.incomplete };
+}
+
+/**
+ * 고정 revision의 파일 blame (CR-135, API-SRC-006 — FR-SRC-005).
+ *
+ * GitHub GraphQL `Commit.blame`이 계산한 줄 구간별 귀속을 그대로 옮긴다 — 순서를 바꾸거나 구간을 합치지 않고, GitHub가 주지
+ * 않은 작성자 이름·계정을 채우지 않는다(`null` 그대로). Time-lapse의 추정과 섞지 않는다. 본문은 읽지 않는다(같은 revision의
+ * `/file`이 준다). 응답의 분류(한도·권한·없음·미지원·일부 결과)는 `readSourceBlame`이 했고, 던진 오류는 경로가 계약 코드로
+ * 옮긴다.
+ */
+export async function sourceBlame(reader: GitHubSourceReader, ref: RepoRef, input: { revision: string; path: string }, options: SourceCallOptions = {}): Promise<SourceBlame> {
+  const blame = await reader.blame(ref, input.revision, input.path, options);
+  return { repository: `${ref.owner}/${ref.repo}`, revision: blame.revision, path: blame.path, provider: 'github_graphql',
+    ranges: blame.ranges.map(range => ({ start_line: range.startLine, end_line: range.endLine, age: range.age,
+      commit: { sha: range.commit.sha, message_headline: range.commit.messageHeadline, author_name: range.commit.authorName, author_login: range.commit.authorLogin, authored_at: range.commit.authoredAt, committed_at: range.commit.committedAt } })) };
 }

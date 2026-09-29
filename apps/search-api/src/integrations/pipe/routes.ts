@@ -1,5 +1,5 @@
 /**
- * PIPE 연동 private 경로 (CR-112 / API-INT-001~014, 공통 계약 3.2·6장).
+ * PIPE 연동 private 경로 (CR-112 / API-INT-001~015, 공통 계약 3.2·6장).
  *
  * ## 요청 한 건의 순서
  *
@@ -42,6 +42,7 @@ import {
   INTEGRATION_OPERATIONS,
   INTEGRATION_PREFIX,
   MERGE_NUMBER_CAPABILITY,
+  SOURCE_BLAME_CAPABILITY,
   operationById,
   type IntegrationOperation,
 } from './operations.js';
@@ -194,15 +195,19 @@ function isoSeconds(ms: number): string {
 
 export function registerIntegrationRoutes(app: FastifyInstance, deps: IntegrationRouteDeps): void {
   const now = deps.now ?? ((): number => Date.now());
+  const blameEnabled = deps.executions.source.blameEnabled === true;
   const capabilities = [
     ...BASE_CAPABILITIES,
     ...(deps.executions.mergeNumbers.mergeNumberEnabled ? [MERGE_NUMBER_CAPABILITY] : []),
+    ...(blameEnabled ? [SOURCE_BLAME_CAPABILITY] : []),
   ];
   const readOperations = INTEGRATION_OPERATIONS.filter(
     (operation) =>
       operation.id.startsWith('read.') &&
       // M 번호가 꺼진 배포에서는 경로가 있어도 원본처럼 404(`feature_disabled`)뿐이다 — 능력 목록과 같이 뺀다 (D-07).
-      (operation.id !== 'read.merge_numbers.resolve' || deps.executions.mergeNumbers.mergeNumberEnabled),
+      (operation.id !== 'read.merge_numbers.resolve' || deps.executions.mergeNumbers.mergeNumberEnabled) &&
+      // blame도 같다 (CR-135, D-26). 꺼진 배포의 두 목록은 CR-135 전과 같다 — PSI-1.0을 유지하는 근거다.
+      (operation.id !== 'read.source.blame' || blameEnabled),
   ).map((operation) => operation.id);
 
   // ------------------------------------------------------------ 1. 전송 인증
@@ -561,7 +566,7 @@ export function registerIntegrationRoutes(app: FastifyInstance, deps: Integratio
     });
   });
 
-  // ------------------------------------------------------------ API-INT-005~014 조회
+  // ------------------------------------------------------------ API-INT-005~015 조회
   type ReadHandler = (
     request: FastifyRequest,
     reply: FastifyReply,
@@ -613,11 +618,14 @@ export function registerIntegrationRoutes(app: FastifyInstance, deps: Integratio
       deps.executions.resolve,
     );
   });
+  // `blame`(CR-135)은 게이트와 무관하게 등록한다 — 꺼진 배포에서는 `executeSource`가 원본 봉투의 404 `feature_disabled`로
+  // 답한다(없는 경로의 연동 404와 다르다). `paths`(CR-133)는 세션 조회만이라 여기 없다.
   const sourceOperations: readonly [string, SourceOperation][] = [
     ['read.source.tree', 'tree'],
     ['read.source.history', 'history'],
     ['read.source.diff', 'diff'],
     ['read.source.file', 'file'],
+    ['read.source.blame', 'blame'],
   ];
   for (const [id, sourceOperation] of sourceOperations) {
     readRoute(id, (request, reply, query, invocation) => {

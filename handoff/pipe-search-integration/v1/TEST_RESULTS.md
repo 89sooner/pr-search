@@ -172,6 +172,7 @@ Commands actually run: 2장
 | 사내 CA가 발급한 인증서로 두 서버 간 mTLS | 사내 PKI·서버에 접근할 수 없다 |
 | 운영 HAProxy L4 passthrough와 backend 포트 우회 차단 | 운영 구성에 접근할 수 없다 |
 | 실제 GHE의 `GET /users/{login}`·권한 조회·웹훅 무효화 | 실제 GHE에 닿지 않는다 |
+| 실제 GHES의 GraphQL `Commit.blame` (CR-135, CONTRACT_DIFF D-26) — 지원 여부, 필요한 GitHub App 권한, 오류 본문의 실제 `type`·HTTP 상태, GraphQL 한도 설정, 큰 파일의 blame 지연 | 실제 GHE에 닿지 않는다. GHE 대역의 `POST /api/graphql`(pr-search `packages/github/testing/mock-ghe.ts`)과 PIPE 하네스의 대역 source reader로만 검증했다 — 게이트 꺼짐의 PSI-1.0 호환은 `integration/blame-disabled.test.ts`, 켜진 배포의 인증·범위·입력·오류 매핑의 스키마 적합성은 `integration/openapi.test.ts`, 공개 경로와의 parity는 `integration/parity.test.ts` |
 | 실제 사용자 identity binding과 권한 교집합 | 매핑 등록은 지시서 범위 밖이다 |
 | PIPE 서버와의 end-to-end(PSI-E 전부, 공동 항목의 PIPE 부분) | PIPE 저장소를 볼 수 없다 |
 | `pnpm run test:a11y`·`test:e2e`·`test:perf` (로컬) | apps/web 화면 코드가 바뀌지 않았다(단위 시험 한 건만 추가). a11y·e2e는 PR CI의 `verify`가 실행해 통과했고(2장 「병합」), `test:perf`는 실행한 곳이 없다 |

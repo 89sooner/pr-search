@@ -1,5 +1,7 @@
 # PR Search Architecture Decision Records
 
+> ADR-027 / CR-135 (2026-09-29): GHE GraphQL을 **source blame 한 조회에만** 쓴다 — 서버가 소유한 고정 query 하나, 조회 문서만 받는 POST(`GitHubTransport.postGraphql`), 기존 설치 토큰·호출 기한·취소의 재사용, REST와 나눈 한도 상태. PIPE·사용자에게 GraphQL을 열지 않는다(프록시 없음). 기본 꺼짐(`SOURCE_BLAME_ENABLED`). 백엔드 6.3의 「이 저장소는 GraphQL을 쓰지 않는다」는 이 한 조회를 뺀 규칙이다.
+
 > ADR-026 / CR-115 (2026-09-22): 확정된 M 번호를 원격 저장소의 lightweight 태그(`refs/tags/M-<코드>-<번호>`)로 굳히는 **두 번째 자동 GHE 쓰기**를 연다. ADR-022의 「유일한」은 이 날부터 「첫 번째」다(ADR-022 Amendment). 쓰기 반경은 태그 **생성** 하나이고 이동·삭제 경로는 코드에 없으며, 자격은 태그 전용 App(`contents:write`)으로 조회·표기 자격과 나눈다. 기본 꺼짐.
 
 > CR-097 amendment / FR-SRC-001~004 / NFR-005: 소스 미저장은 지속 저장 금지로 유지하되, 사용자 승인 분석 요청에 대한 일시적인 GHE Contents 열람을 허용한다. 기존 인증/저장소 범위 판정 후 읽기 API만 사용하고 소스 본문은 PG·ES·Redis·미러·로그에 남기지 않는다. 외부 download_url을 추적하지 않는다. Git 원본 line blame을 가장하지 않고 제한된 인접 리비전 정렬의 추정 이력을 제공한다. ADR-006의 Radix/제품 토큰/기존 SaaS 10곳 참고 방향을 공유한다.
@@ -25,7 +27,7 @@
 
 > ADR-006 amendment — CR-095 (2026-09-16, 사용자 승인): Conductor 전용 결정은 operator 기존 UI에 한정한다. 일반 검색/읽기 UI는 @radix-ui의 headless primitives, 시맨틱 HTML과 독립 제품 CSS로 전환한다. 신규 토큰은 --r-*로 격리한다. 기존 운영 컴포넌트는 삭제하지 않는다. 근거: template.html 배치와 최신 개발자용 SaaS 표현 요구, NFR-007, FR-SRCH-003·005~008. 신규 API·DB 결정 없음.
 
-> 상태: review | 버전: v0.20 | 갱신일: 2026-09-23
+> 상태: review | 버전: v0.21 | 갱신일: 2026-09-29
 
 CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호의 적용과 세부 계약은 [상세 설계](pr_search_wp074_design.md) 전문, 선택 대안은 4절, Agent-Initiated Decisions는 12절이 소유한다. 직접 부재 증거의 가용성 한계(DEV-581)는 accepted 동작인 pending과 별개인 검증 조건이며 해결됐다고 간주하지 않는다.
 
@@ -62,6 +64,30 @@ CR-079: ADR-023을 아래 목록과 상세 설계에 추가한다. 새 M 번호�
 | ADR-023 | squash M 번호의 확정 근거·선행 freshness·영속 복구·인용 안전성 | accepted — CR-100 보완(2026-09-17): DEV-581의 부재 증서를 운영자 확인서(ENT-SEQ-008)가 대신한다 | 2026-09-11 / 2026-09-17 | WP-074 상세 설계, data, async, API, UI, delivery, RUNBOOK |
 | ADR-025 | PIPE 위임 검색은 search-api 안의 private mTLS 리스너가 받는다 | accepted — CR-112, 기본 꺼짐. 번호 024는 미병합 로컬 브랜치 `docs/regression-first-slice`가 먼저 쓰고 있어 건너뛰었다 | 2026-09-21 | API, data, security, backend, infrastructure, delivery |
 | ADR-026 | M 번호 lightweight 태그는 Data Plane의 두 번째 자동 GHE 쓰기이며 반경은 `refs/tags/M-*` 생성 하나다 | accepted — CR-115, 기본 꺼짐. ADR-022를 「첫 번째」로 고치는 Amendment를 함께 적었다 | 2026-09-22 | security, backend, data, async, infrastructure, RUNBOOK |
+| ADR-027 | GraphQL은 source blame 한 조회에만 쓴다 — 서버 소유 고정 query, 조회 문서만 받는 POST, 기존 전송 재사용 | accepted — CR-135, 기본 꺼짐 | 2026-09-29 | API, backend, security, infrastructure, delivery, PIPE 인계, RUNBOOK |
+
+## ADR-027 GraphQL은 source blame 한 조회에만 쓴다 — 서버 소유 고정 query, 조회 문서만 받는 POST, 기존 전송 재사용
+
+### Context
+
+CR-135 / FR-SRC-005. PIPE가 선택한 파일·리비전의 blame — 줄 구간마다 그 줄을 마지막으로 바꾼 커밋 — 을 원한다(23차 6번). GitHub API에서 blame은 GraphQL `Commit.blame(path:)`로 주어지고 REST에는 없다. 이 저장소는 지금까지 GHE를 REST로만 읽었다(백엔드 6.3 — 작성자 팀 소속도 GraphQL 없이 조직 단위 REST로 푼다). 지켜야 할 것: 조회용 Data App 자격의 읽기 전용 반경, 기존 전송의 토큰 풀·401 무효화·요청 기한·취소(CR-132), PIPE 연동의 고정 operation 원칙(ADR-025 — catch-all 프록시 금지), 접근 범위 확인이 GHE 호출보다 먼저라는 규칙, 원격 문구 비노출, 그리고 사내 GHES가 `Commit.blame`을 주는지 이 저장소가 확인할 수 없다는 사실.
+
+### Decision
+
+1. **GraphQL은 source blame 한 조회에만 쓴다.** 서버가 소유한 고정 query 하나(`SOURCE_BLAME_QUERY` — `repository(owner,name){ object(oid){ ...on Commit{ blame(path){ ranges{ startingLine endingLine age commit{ oid messageHeadline authoredDate committedDate author{ name user{ login } } } } } } } }`, 작성자 이메일 없음)만 보낸다. 호출자가 정하는 것은 저장소·리비전·경로 변수뿐이다. 사용자나 PIPE가 query·endpoint·토큰을 보내는 경로(GraphQL 프록시)는 두지 않는다. query를 바꾸면 GHE 대역과 이 ADR·API 계약을 함께 고친다.
+2. **전송은 기존 `GitHubTransport`를 재사용한다.** POST 경로 하나(`postGraphql`)가 REST와 같은 설치 토큰 lease·401 무효화·호출자 신호·호출 기한을 쓰고, 공용 스케줄러의 realtime 슬롯을 GraphQL 별도 동시 상한 2(`GRAPHQL_CONCURRENCY`) 안에서만 청한다(원시 읽기의 선례). 호출 기한은 30초(`SOURCE_BLAME_TIMEOUT_MS`), 요청 전체의 기한은 CR-132의 120초다. **POST는 조회 문서만 받는다** — `mutation`·`subscription` 문서는 토큰을 빌리기 전에 거절한다. 회귀 가드 「조회 전송 계층에 쓰기 메서드가 없다」는 「POST는 조회 문서만 받는 `postGraphql` 한 곳」으로 좁혔다.
+3. **한도 상태를 REST와 나눈다.** GraphQL 응답의 한도 헤더는 REST 토큰 상태에 넣지 않고 REST 격리도 보지 않는다 — 점수로 깎이는 다른 버킷이다. 프로세스 안의 재호출 차단도 두지 않는다: 한도 오류는 429 `SOURCE_RATE_LIMITED`와 `Retry-After`로 호출자에게 돌려줄 뿐이고 재시도하지 않는다. 성공 응답의 `x-ratelimit-remaining: 0`은 실패가 아니다.
+4. **주소는 배포 설정에서 도출한다.** `GHE_GRAPHQL_URL`이 비면 REST 루트(`GHE_API_URL`, 비면 `<GHE_BASE_URL>/api/v3`)가 `/api/v3`로 끝날 때 그 꼬리를 `/api/graphql`로 바꾸고, 아니면 `<REST 루트>/graphql`이다(github.com 형태). `/api/v3/graphql`을 만들지 않는다. 명시 값은 http(s) URL이어야 하고 query·fragment가 없어야 한다 — 어기면 기동 시점에 실패한다.
+5. **분류 순서를 고정한다.** (a) HTTP — 401은 토큰 무효화와 권한, 429와 부 한도 문구의 403은 한도, 그 밖의 403은 권한, 5xx는 일시 장애. (b) 200 본문의 `errors[]` — `RATE_LIMITED`·부 한도 문구는 한도, 대상(`repository`·`object`·`blame`)의 `NOT_FOUND`는 없음, `FORBIDDEN`은 권한, 스키마 검증 오류(`undefinedField`)는 미지원(501 `SOURCE_BLAME_UNSUPPORTED`), 남는 것은 일시 장애. (c) `data` 결손 — `repository`·`object`가 `null`이면 없음, 그 밖(커밋 아님, `blame` 없음, 줄 구간의 순서 위반)은 일시 장애. `errors`가 하나라도 있으면 `data`가 함께 와도 성공이 아니다. 원격 문구는 응답·로그에 싣지 않는다.
+6. **기능 게이트, PIPE에는 선택 operation.** `SOURCE_BLAME_ENABLED`는 기본 꺼짐이며 꺼지면 경로가 404 `feature_disabled`이고 GHE를 부르지 않는다. PIPE의 operation `read.source.blame`(API-INT-015)과 capability `source_blame:read`는 켜진 배포에서만 광고하고 `protocol_version`은 `PSI-1.0` 그대로다(API 계약 8장의 예외, D-26).
+
+### Alternatives and Consequences
+
+REST만으로 blame을 흉내 내는 안(경로 이력을 따라 인접 리비전을 비교해 줄을 거슬러 올라가기)은 Time-lapse의 추정과 같은 것이라 blame이라 부를 수 없어 기각했다. 로컬 미러에서 `git blame`을 돌리는 안은 미러가 blobless이고(ADR-005) blob 지연 인출이 기본 차단이며(`MIRROR_ALLOW_BLOB_FETCH=false`) 미러가 모든 저장소에 있지 않아 기각했다. 범용 GraphQL 클라이언트나 PIPE가 query를 보내는 프록시는 조회 App 토큰으로 임의 문서를 실행하게 해 권한 반경·범위 강제·감사가 무너지므로 기각했다(지시가 금지한다). GraphQL 한도를 REST 토큰 상태와 합치는 안은 blame 한 번이 REST 조회 전체를 격리하거나 REST 격리가 blame을 막아 기각했다. 프로세스 안의 재호출 차단은 사내 GHES의 GraphQL 한도 설정을 모르고(GHES는 한도가 꺼져 있을 수 있다) blame이 명시적 요청으로만 불려 두지 않았다. `protocol_version`을 PSI-1.1로 올리는 안은 버전 상수·예시·발급 시험·적합성 벡터까지 번지고 PIPE 쪽 변경을 강제해 기각했다. 대가: 「이 저장소는 GraphQL을 쓰지 않는다」에 예외가 하나 생긴다. 조회 전송의 회귀 가드가 POST 한 곳만큼 좁아졌다. 호출자가 `Retry-After`를 지키지 않으면 GHE에 다시 닿는다. 사내 GHES의 `Commit.blame` 지원·필요한 App 권한·오류 본문의 실제 `type`·GraphQL 한도·큰 파일의 지연은 대역으로만 검증했으므로 켜기 전 확인이 운영 절차(RUNBOOK 7.L)로 남는다.
+
+### Verification and Rollback
+
+단위(고정 query·조회 문서만·분류 순서·한도 분리·주소 도출)·GHE 대역 GraphQL 위 실제 전송 통합·PIPE 통합(꺼진 배포의 발급·`/context`)·회귀(POST 한 곳·배선 가드)·변이의 결과는 원장 6.126장이 소유한다. 실제 GHES를 거친 검증은 NOT_RUN이다. 롤백은 `SOURCE_BLAME_ENABLED=false`로 재기동하는 것이다 — 경로는 404 `feature_disabled`, PIPE의 capability·operation은 사라진다. 마이그레이션도 저장하는 자료도 없어 되돌릴 데이터가 없다.
 
 ## ADR-026 M 번호 lightweight 태그는 Data Plane의 두 번째 자동 GHE 쓰기이며 반경은 `refs/tags/M-*` 생성 하나다
 

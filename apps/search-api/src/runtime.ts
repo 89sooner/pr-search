@@ -161,7 +161,13 @@ export function buildServerDeps(parts: RuntimeParts): ServerDeps {
   const gh = buildGhDeps(parts);
   return {
     config: parts.config,
-    ...(parts.github && parts.auth ? { source: { pool: parts.pool, reader: () => parts.github!.client.sourceReader(), es: parts.es } } : {}),
+    /*
+     * source 조회 (FR-SRC). `blameEnabled`는 blame 기능 게이트다 (CR-135, `SOURCE_BLAME_ENABLED`) — PIPE 연동 실행도
+     * 이 객체를 펼쳐 받으므로 두 경로가 같은 값을 본다. 꺼져 있으면 blame 경로가 404 `feature_disabled`다.
+     */
+    ...(parts.github && parts.auth
+      ? { source: { pool: parts.pool, reader: () => parts.github!.client.sourceReader(), es: parts.es, blameEnabled: parts.config.sourceBlameEnabled === true } }
+      : {}),
     ...(gh === undefined ? {} : { gh }),
     /*
      * **헬스체크가 백킹 서비스를 실제로 확인한다** (CR-059, DEV-495).

@@ -16,6 +16,11 @@ export interface GitHubAppConfig {
   readonly baseUrl: string;
   /** REST API 루트. GHE는 `/api/v3`가 붙는다 — github.com과 다른 지점이다. */
   readonly apiUrl: string;
+  /**
+   * GraphQL 끝점 (CR-135). GHES는 `/api/graphql`이다 — REST 루트 아래(`/api/v3/graphql`)가 아니다.
+   * `GHE_GRAPHQL_URL`이 비면 `apiUrl`에서 도출한다(`deriveGraphqlUrl`).
+   */
+  readonly graphqlUrl: string;
   readonly appId: string;
   /** PEM 형식 RSA private key. 이 값은 절대 로그에 남기지 않는다. */
   readonly privateKey: string;
@@ -77,12 +82,49 @@ export function resolveMirrorConfig(env: GitHubEnv = process.env): MirrorConfig 
 /** `GHE_BASE_URL`이 비었을 때 쓰는 값. 실제 배포는 이 값으로 동작하지 않는다. */
 const DEFAULT_GHE_BASE_URL = 'https://ghe.example.com';
 
+/**
+ * REST 루트에서 GraphQL 끝점을 도출한다 (CR-135).
+ *
+ * GHES는 REST가 `/api/v3`, GraphQL이 `/api/graphql`로 **형제**다 — `${apiUrl}/graphql`로 붙이면 `/api/v3/graphql`이 되어
+ * 없는 경로다. github.com은 REST 루트가 `https://api.github.com`이고 GraphQL이 그 아래 `/graphql`이다. 그래서 `/api/v3`로
+ * 끝나면 그 꼬리를 바꾸고, 아니면 루트 아래에 붙인다.
+ */
+export function deriveGraphqlUrl(apiUrl: string): string {
+  return /\/api\/v3$/.test(apiUrl) ? apiUrl.replace(/\/api\/v3$/, '/api/graphql') : `${apiUrl}/graphql`;
+}
+
+/**
+ * `GHE_GRAPHQL_URL` (CR-135). 비었거나 공백뿐이면 도출하고(`DEV-548`과 같은 규율), 명시 값은 http(s) URL이어야 하며
+ * query·fragment를 갖지 않는다 — 형식이 깨지면 기동 시점에 던진다(`parseInstallations`와 같은 규율). 값은 메시지에
+ * 싣지 않는다: 주소에 사용자 정보가 붙어 있을 수 있다.
+ */
+function resolveGraphqlUrl(value: string | undefined, apiUrl: string): string {
+  const explicit = withBlankFallback(value, '');
+  if (explicit === '') return deriveGraphqlUrl(apiUrl);
+  let parsed: URL;
+  try {
+    parsed = new URL(explicit);
+  } catch {
+    throw new Error('GHE_GRAPHQL_URL이 URL이 아니다 (http(s)://host/path)');
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('GHE_GRAPHQL_URL은 http(s) URL이어야 한다');
+  }
+  // `https://x/a?`는 search가 빈 문자열로 읽힌다 — 해석 결과가 아니라 원문을 본다.
+  if (explicit.includes('?') || explicit.includes('#')) {
+    throw new Error('GHE_GRAPHQL_URL에 query나 fragment를 붙이지 않는다');
+  }
+  return explicit;
+}
+
 export function resolveGitHubConfig(env: GitHubEnv = process.env): GitHubAppConfig {
   const baseUrl = withBlankFallback(env['GHE_BASE_URL'], DEFAULT_GHE_BASE_URL);
+  // GHE의 REST 루트는 `/api/v3`다. 명시 설정이 있으면 그것을 쓴다.
+  const apiUrl = withBlankFallback(env['GHE_API_URL'], `${baseUrl}/api/v3`);
   return {
     baseUrl,
-    // GHE의 REST 루트는 `/api/v3`다. 명시 설정이 있으면 그것을 쓴다.
-    apiUrl: withBlankFallback(env['GHE_API_URL'], `${baseUrl}/api/v3`),
+    apiUrl,
+    graphqlUrl: resolveGraphqlUrl(env['GHE_GRAPHQL_URL'], apiUrl),
     appId: env['GHE_APP_ID'] ?? '',
     privateKey: (env['GHE_APP_PRIVATE_KEY'] ?? '').replace(/\\n/g, '\n'),
     requestTimeoutMs: Number(env['GHE_REQUEST_TIMEOUT_MS'] ?? '10000'),

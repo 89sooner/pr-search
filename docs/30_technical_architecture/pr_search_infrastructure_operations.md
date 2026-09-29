@@ -1,6 +1,8 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.24 | 갱신일: 2026-09-22
+> 상태: review | 버전: v0.25 | 갱신일: 2026-09-29
+
+CR-135 / FR-SRC-005 운영: source blame(API-SRC-006, PIPE `read.source.blame`)은 **기본 꺼짐**이다 — `SOURCE_BLAME_ENABLED`(search-api만 읽는다, `true`·`false`·빈 값 외에는 기동을 거부한다). 새 서비스·DB·마이그레이션·워커·포트는 없다. 켜면 search-api가 GHE GraphQL에 `POST`한다 — 주소 `GHE_GRAPHQL_URL`은 비워 두면 REST 루트에서 도출한다(`…/api/v3` → `…/api/graphql`, 그 밖은 `<GHE_API_URL>/graphql`. `/api/v3/graphql`이 아니다). 도출한 주소는 같은 GHE 호스트라 아웃바운드 허용 목록은 그대로다(6장 표의 행). 자격은 기존 Data App이며, 사내 GHES의 `Commit.blame` 지원과 필요한 App 권한은 확인하지 못했다. 단일 호스트는 `deploy/single-host/compose.yml`의 search-api가 두 값을 받고(`.env.example`에 주석), 켜는 절차와 증상별 확인은 `deploy/single-host/RUNBOOK.md` 7.L·8장이 소유한다. k8s의 search-api는 `envFrom`으로 ConfigMap `prs-config`를 받으므로 두 키를 그 ConfigMap에 더하면 된다 — 기본 ConfigMap에는 넣지 않았고, 없으면 꺼짐·도출이다.
 
 CR-115 / FR-SEQ-012 운영: 확정된 M 번호를 원격 저장소의 lightweight 태그(`refs/tags/M-<코드>-<번호>`)로 만드는 `tag` 역할(JOB-SEQ-007, ADR-026)이 더해진다. **새 파드·새 컨테이너가 아니다** — 단일 호스트의 `worker-annotate`(`PIPELINE_WORKER_ROLES=annotate,tag`)와 k8s의 `pipeline-worker-annotate` 파드에 표기 역할과 함께 뜨며, 태그 전용 App 자격(`.env`의 `GHE_TAG_APP_ID`·`GHE_TAG_PRIVATE_KEY`·`GHE_TAG_INSTALLATIONS`, k8s `prs-tag-secrets`)은 그 단위만 받는다. 전역 스위치 `MNUMBER_TAG_ENABLED`의 기본은 꺼짐이고, 켜 놓고 자격이 비면 그 단위가 기동을 거부한다. 마이그레이션 035(`merge_sequence` 태그 결과 열, `repository.tag_enabled`·`tag_blocked_*`, `sequence_work`의 `tag` kind, 잡 `mnumber_tag_reconcile`)가 더해지며 새 DB·새 Redis·새 볼륨은 없다. 아웃바운드는 기존 GHE REST 허용 목록 안이다(`GET /git/ref/tags/…`·`GET /git/matching-refs/tags/…`·`POST /git/refs`). 운영 명령은 `prsctl mnumber tags reconcile [--dry-run] | status`이며(8장), 켜는 절차·ruleset·충돌 처리는 `deploy/single-host/RUNBOOK.md` 7.F가 소유한다.
 
@@ -181,6 +183,7 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 | 인바운드 | GHE → `ingest-gateway` | GHE IP 대역 인그레스 제한, HMAC 검증 |
 | 인바운드 (CR-112, 기본 꺼짐) | PIPE 서버 → `search-api` private 리스너 | 사내 private 망 한정, 공개 ingress·web 경로 없음. search-api가 TLS를 끝내는 mTLS(프록시는 L4 passthrough만), 등록 client 인증서만. 네트워크 ACL은 추가 방어 |
 | 아웃바운드 (CR-112) | `search-api` → GHE REST `GET /users/{login}` | 기존 GHE 허용 목록 안. 발급마다 1회, 프로세스당 동시 8 |
+| 아웃바운드 (CR-135, 기본 꺼짐) | `search-api` → GHE GraphQL `POST /api/graphql`(source blame 고정 query 하나) | 기존 GHE 허용 목록 안(같은 호스트). 조회 문서만, 호출 기한 30초, 프로세스당 동시 2, 재시도 없음 |
 | 내부 | `web` → `search-api` | 클러스터 내부, mTLS 또는 네트워크 정책 |
 | 내부 | 전 서비스 → PostgreSQL / ES / Redis | 사설 네트워크, 인증, TLS |
 | 아웃바운드 | 워커 → GHE REST | 허용 목록 (GHE 호스트만) |

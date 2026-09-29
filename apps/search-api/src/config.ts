@@ -80,6 +80,14 @@ export interface SearchApiConfig {
    */
   readonly mergeNumberEnabled?: boolean;
   /**
+   * source blame (CR-135 / FR-SRC-005, `SOURCE_BLAME_ENABLED`).
+   *
+   * **기본은 꺼짐이다.** 꺼져 있으면 `API-SRC-006`이 등록된 채로 404 `feature_disabled`이고 GHE를 부르지 않는다.
+   * 사내 GHES가 GraphQL `Commit.blame`을 주는지 확인한 뒤 켠다. 선택 필드인 이유는 `mergeNumberEnabled`와 같다 —
+   * 부재가 곧 꺼짐이고 그것이 기존 계약 그대로다. `resolveSearchApiConfig`는 언제나 값을 채운다.
+   */
+  readonly sourceBlameEnabled?: boolean;
+  /**
    * GitHub Operations Plane (REL-007 R0 / WP-077, CR-086).
    *
    * **기본은 꺼짐이다.** 꺼져 있으면 `/api/v1/gh/*`를 등록하지 않는다 — 화면은 404로
@@ -174,6 +182,7 @@ export function resolveSearchApiConfig(env: SearchApiEnv = process.env): SearchA
     gheBaseUrl: gheBaseUrl === '' ? null : gheBaseUrl,
     searchCursorKey: resolveSearchCursorKey(env),
     mergeNumberEnabled: resolveMergeNumberEnabled(env),
+    sourceBlameEnabled: resolveSourceBlameEnabled(env),
     ghOps: resolveGhOpsConfig(env),
     pipeIntegration: resolvePipeIntegrationConfig(env),
   };
@@ -190,6 +199,17 @@ export function resolveMergeNumberEnabled(env: SearchApiEnv = process.env): bool
   if (raw === 'true') return true;
   if (raw === 'false' || raw === '') return false;
   throw new Error(`MNUMBER_ENABLED는 true 또는 false여야 한다: ${raw}`);
+}
+
+/**
+ * `SOURCE_BLAME_ENABLED` — `true`만 켠다 (CR-135). `resolveMergeNumberEnabled`와 같은 규칙이다: 빈 값·부재는 꺼짐이고,
+ * 그 밖의 값은 기동을 거부한다 — 오타로 조용히 꺼진 채 돌면 운영자가 켰다고 믿는 기능이 404만 답한다.
+ */
+export function resolveSourceBlameEnabled(env: SearchApiEnv = process.env): boolean {
+  const raw = (env['SOURCE_BLAME_ENABLED'] ?? 'false').trim();
+  if (raw === 'true') return true;
+  if (raw === 'false' || raw === '') return false;
+  throw new Error(`SOURCE_BLAME_ENABLED는 true 또는 false여야 한다: ${raw}`);
 }
 
 /** 감사 기록에 남는 주체 식별자. 사람 계정과 섞이지 않게 접두를 둔다. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { auditUserId, parseAdminTokens, resolveSearchApiConfig } from './config.js';
+import { auditUserId, parseAdminTokens, resolveSearchApiConfig, resolveSourceBlameEnabled } from './config.js';
 
 describe('관리 토큰 파싱 (CR-013, DEV-030)', () => {
   it('이름과 토큰을 갈라 읽는다', () => {
@@ -71,5 +71,29 @@ describe('설정 해석', () => {
   it('감사 주체에 접두를 붙여 사람 계정과 섞이지 않게 한다', () => {
     expect(auditUserId({ name: 'alice', token: 'x' })).toBe('admin:alice');
     expect(auditUserId({ name: 'unnamed', token: 'x' })).toBe('admin:unnamed');
+  });
+});
+
+describe('CR-135 FR-SRC-005 blame 기능 게이트 SOURCE_BLAME_ENABLED', () => {
+  it('CR-135 FR-SRC-005 true만 켠다 — 부재·빈 값·false는 꺼짐이고 앞뒤 공백은 무시한다(MNUMBER_ENABLED와 같은 표)', () => {
+    const accepted: readonly (readonly [Record<string, string>, boolean])[] = [
+      [{}, false],
+      [{ SOURCE_BLAME_ENABLED: 'true' }, true],
+      [{ SOURCE_BLAME_ENABLED: 'false' }, false],
+      [{ SOURCE_BLAME_ENABLED: '' }, false],
+      [{ SOURCE_BLAME_ENABLED: ' true ' }, true],
+      [{ SOURCE_BLAME_ENABLED: ' false ' }, false],
+    ];
+    for (const [env, expected] of accepted) {
+      expect(resolveSourceBlameEnabled(env), JSON.stringify(env)).toBe(expected);
+      expect(resolveSearchApiConfig(env).sourceBlameEnabled, JSON.stringify(env)).toBe(expected);
+    }
+  });
+
+  it('CR-135 FR-SRC-005 그 밖의 값은 기동을 거부한다 — 오타를 켜짐으로도 꺼짐으로도 읽지 않는다', () => {
+    for (const bad of ['yes', 'TRUE', 'True', '1', 'on', 'no']) {
+      expect(() => resolveSourceBlameEnabled({ SOURCE_BLAME_ENABLED: bad }), bad).toThrow('SOURCE_BLAME_ENABLED');
+      expect(() => resolveSearchApiConfig({ SOURCE_BLAME_ENABLED: bad }), bad).toThrow('SOURCE_BLAME_ENABLED');
+    }
   });
 });

@@ -1616,6 +1616,15 @@ describe('경로가 실재하는지', () => {
   });
 
   /*
+   * **blame의 GraphQL 주소가 운영 전송에 실제로 닿는다** (CR-135). 배선이 빠지면 전송에
+   * `graphqlUrl`이 없어 모든 blame이 일반 502로 답하고, 대역을 쓰는 시험은 전송을 직접
+   * 만들므로 그 사실을 보지 못한다.
+   */
+  it('search-api 전송이 설정의 GraphQL 주소를 받는다 (CR-135)', () => {
+    expect(API_INDEX).toContain('graphqlUrl: githubConfig.graphqlUrl,');
+  });
+
+  /*
    * **0건 검색의 추천 실패가 운영 로그에 남는다** (CR-128, DEV-785).
    *
    * 진단 로그는 `index.ts`의 검색 의존 객체 하나에서 공개 경로와 PIPE 연동으로 퍼진다(`runtime.ts`가 그 객체를
@@ -3785,10 +3794,49 @@ describe('표기 쓰기 자격이 조회 경로로 새지 않는다 (WP-075 / CR
   it('조회 전송 계층에 쓰기 메서드가 없다', () => {
     // `GitHubTransport`는 GET 계열만 갖는다. PATCH가 여기 생기면 조회 토큰으로
     // 쓰기가 가능한 경로가 만들어진다.
+    //
+    // CR-135: 예외는 GraphQL **조회** 하나다. POST는 `#sendGraphql` 한 곳에만 있고 그것을
+    // 부르는 곳은 `postGraphql`뿐이며, `postGraphql`은 토큰을 빌리기 전에 mutation·subscription
+    // 문서를 거절한다(`isQueryDocument` — `transport.test.ts`가 고정한다). 본문은 서버의 고정 query다.
     const transport = read('packages/github/src/transport.ts');
-    expect(transport).not.toMatch(/method:\s*'(PATCH|POST|PUT|DELETE)'/);
+    expect(transport).not.toMatch(/method:\s*'(PATCH|PUT|DELETE)'/);
+    expect(transport.match(/method:\s*'POST'/g) ?? []).toHaveLength(1);
+    const sendGraphql = transport.indexOf('async #sendGraphql(');
+    const post = transport.search(/method:\s*'POST'/);
+    expect(sendGraphql).toBeGreaterThan(-1);
+    expect(post > sendGraphql && post < transport.indexOf('\n  async ', sendGraphql + 1)).toBe(true);
+    expect(transport.match(/this\.#sendGraphql\(/g) ?? []).toHaveLength(1);
+    const postGraphql = transport.slice(transport.indexOf('async postGraphql('), sendGraphql);
+    expect(postGraphql).toContain('isQueryDocument(options.query)');
+    expect(postGraphql).toContain('this.#sendGraphql(');
     const client = read('packages/github/src/client.ts');
     expect(client).not.toContain('updateTitle');
+  });
+
+  it('GraphQL을 부르는 제품 코드는 blame 한 곳이고 서버 소유 고정 query만 싣는다 (CR-135)', () => {
+    // 쓰기가 없다는 것만으로는 「프록시가 없다」가 지켜지지 않는다. 호출자의 조회 문서를 그대로 넘기는 읽기 전용
+    // GraphQL 통로가 생기면 App 토큰이 볼 수 있는 모든 저장소를 「사용자 범위 ∩ client 허용 목록」 밖에서 읽게 된다.
+    const files: string[] = [];
+    const visit = (dir: string): void => {
+      for (const entry of readdirSync(`${root}${dir}`, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue;
+        const relative = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) visit(relative);
+        else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) files.push(relative);
+      }
+    };
+    visit('packages');
+    visit('apps');
+    expect(files.filter((file) => read(file).includes('.postGraphql('))).toEqual(['packages/github/src/source-blame.ts']);
+    const blame = read('packages/github/src/source-blame.ts');
+    expect(blame.split('.postGraphql(')).toHaveLength(2);
+    const start = blame.indexOf('.postGraphql(');
+    expect(blame.slice(start, blame.indexOf('});', start))).toMatch(/\bquery: SOURCE_BLAME_QUERY,/);
+    // 고정 query는 치환이 없는 문자열 상수다.
+    const head = 'export const SOURCE_BLAME_QUERY = `';
+    const constant = blame.slice(blame.indexOf(head) + head.length, blame.indexOf('`;', blame.indexOf(head)));
+    expect(constant).toMatch(/^query SourceBlame\(/);
+    expect(constant).not.toContain('${');
   });
 
   it('표기 클라이언트가 조회 App의 변수를 읽지 않는다', () => {

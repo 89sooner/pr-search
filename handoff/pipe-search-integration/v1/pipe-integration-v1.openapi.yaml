@@ -21,7 +21,7 @@ jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 info:
   title: PR Search — PIPE Search Integration (private)
   version: PSI-1.0
-  summary: PIPE 서버가 사용자 신원을 위임해 pr-search의 읽기 전용 조회 10종을 쓰는 서버 간 계약
+  summary: PIPE 서버가 사용자 신원을 위임해 pr-search의 읽기 전용 조회 11종을 쓰는 서버 간 계약
   description: |
     ## 자격
 
@@ -66,7 +66,7 @@ tags:
   - name: context
     description: 검색 사용자 문맥 (연동 전용)
   - name: read
-    description: 원본 조회 10종을 그대로 실행한다
+    description: 원본 조회 11종을 그대로 실행한다 (M 번호 해석·blame은 기능 게이트가 켜진 배포에서만 capabilities·operations에 있다)
 
 paths:
   /internal/integrations/pipe/v1/auth/exchange:
@@ -677,6 +677,54 @@ paths:
         default:
           $ref: '#/components/responses/ReadSourceError'
 
+  /internal/integrations/pipe/v1/read/source/{repository}/blame:
+    get:
+      operationId: readSourceBlame
+      x-operation-id: read.source.blame
+      x-api-id: API-INT-015
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRC-006
+        method: GET
+        path: /api/v1/source/{repository}/blame
+      tags: [read]
+      summary: 특정 리비전 파일의 blame (원본 API-SRC-006 실행, CR-135)
+      description: >-
+        GitHub GraphQL `Commit.blame`이 계산한 줄 구간별 귀속 커밋을 그대로 옮긴다 — Time-lapse(관측한 라인 이력의 추정)가
+        아니다. 본문은 싣지 않는다 — 같은 `revision`의 `read.source.file`로 읽어 줄 번호로 조합한다. 줄 범위·페이지 인자는
+        없다(GitHub의 `Blame.ranges`가 한 응답에 전부 온다). **기능 게이트(CONTRACT_DIFF D-26).** `SOURCE_BLAME_ENABLED=true`인
+        배포에서만 capabilities에 `source_blame:read`가, `/context`의 operations에 `read.source.blame`이 있다. 꺼진 배포에서도
+        경로는 있으며, grant와 엄격한 query 검사(400 `INVALID_REQUEST`) 뒤 저장소 형식·접근 범위·파라미터를 보기 전에 원본
+        봉투의 404 `NOT_FOUND`(`detail.reason = feature_disabled`)로 답하고 GHE를 부르지 않는다. 켜진 배포의 검사 순서는 다른
+        source 조회와 같다: 저장소 형식(400) → 접근 범위(사용자 범위 ∩ client 허용 목록 — 범위 밖·미등록은 404, GHE 호출
+        없음) → 파라미터(400) → GHE. 오류는 원본 봉투다: 501 `SOURCE_BLAME_UNSUPPORTED`(이 GHES의 GraphQL에 blame이 없다 —
+        다시 불러도 같다), 404 `NOT_FOUND`(그 revision에 없는 커밋·경로), 429 `SOURCE_RATE_LIMITED`(`Retry-After`), 503
+        `SOURCE_PERMISSION_REQUIRED`(GitHub App 권한), 502 `SOURCE_UNAVAILABLE`(일시 장애·일부 결과·호출 기한 30초·요청 기한
+        120초). pr-search는 GitHub 호출을 재시도하지 않고 GraphQL 한도로 이후 호출을 막지도 않는다 — 429의 `Retry-After`를
+        지키는 것은 호출자의 몫이다. 실제 GHES에서는 확인하지 않았다(TEST_RESULTS NOT_RUN).
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - name: path
+          in: query
+          required: true
+          description: 파일 경로. 비어 있으면 400. 2048자 이하, 제어 문자·역슬래시·`.`·`..`·빈 조각 금지, `/`로 시작·끝 금지.
+          schema:
+            type: string
+        - name: revision
+          in: query
+          required: true
+          description: 40자 hex 커밋 SHA. 브랜치 이름은 받지 않는다 — 트리·이력 응답의 `revision`을 그대로 넘긴다.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SourceBlameOk'
+        '429':
+          $ref: '#/components/responses/SourceRateLimited'
+        default:
+          $ref: '#/components/responses/ReadSourceError'
+
 components:
   securitySchemes:
     mutualTLS:
@@ -868,6 +916,17 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SourceFile'
+    SourceBlameOk:
+      description: 원본과 같은 본문 (`correlation_id` 키가 없다).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourceBlame'
     SourceRateLimited:
       description: GHE rate limit. 원본 봉투(`SOURCE_RATE_LIMITED`)이며 `Retry-After`가 붙을 수 있다. 즉시 재시도하지 않는다.
       headers:
@@ -959,8 +1018,10 @@ components:
 
     Capability:
       type: string
-      enum: [search:read, source:read, merge_number:read]
-      description: 이 연동이 부여하는 능력. `merge_number:read`는 `MNUMBER_ENABLED=true`인 배포에서만 있다. 역할과 무관하다.
+      enum: [search:read, source:read, merge_number:read, source_blame:read]
+      description: >-
+        이 연동이 부여하는 능력. `merge_number:read`는 `MNUMBER_ENABLED=true`인 배포에서만, `source_blame:read`는
+        `SOURCE_BLAME_ENABLED=true`인 배포에서만 있다(CONTRACT_DIFF D-07·D-26). 역할과 무관하다.
 
     ReadOperationId:
       type: string
@@ -975,6 +1036,7 @@ components:
         - read.source.history
         - read.source.diff
         - read.source.file
+        - read.source.blame
       description: 조회 operation의 이름. 이벤트 기록·지표 라벨에도 같은 이름을 쓴다.
 
     AuthContextId:
@@ -1205,7 +1267,8 @@ components:
           description: >-
             이 배포에서 쓸 수 있는 조회 operation. M 번호가 꺼진 배포에서는 `read.merge_numbers.resolve`가 빠진다 — 경로는
             있지만 원본처럼 404 `NOT_FOUND`(`detail.reason = feature_disabled`)이며, 능력 목록에서도 `merge_number:read`가
-            함께 빠진다(CONTRACT_DIFF D-07).
+            함께 빠진다(CONTRACT_DIFF D-07). blame이 꺼진 배포(기본)에서는 같은 방식으로 `read.source.blame`과
+            `source_blame:read`가 함께 빠진다(D-26).
         correlation_id:
           $ref: '#/components/schemas/CorrelationId'
 
@@ -1370,7 +1433,7 @@ components:
     #             (근거: apps/search-api/src/sequence/merge-numbers.ts:141-152, apps/search-api/src/sequence/merge-numbers.ts:254-265,
     #              apps/search-api/src/sequence/space.ts:172-187)
     #
-    # ---- [6] GET /api/v1/source/{repository}/{tree|history|file|diff} — executeSource (apps/search-api/src/source/routes.ts:46) ----
+    # ---- [6] GET /api/v1/source/{repository}/{tree|history|file|diff|blame} — executeSource (apps/search-api/src/source/routes.ts:46) ----
     # 모든 응답(성공·오류)에 `cache-control: private, no-store`, `pragma: no-cache`, `x-content-type-options: nosniff`.
     #   429에는 GitHub가 재시도 시각을 알려 준 경우 `retry-after`(초)가 붙는다.
     #   (근거: apps/search-api/src/source/routes.ts:47, apps/search-api/src/source/routes.ts:121)
@@ -1395,6 +1458,10 @@ components:
     # diff          pr(Number()가 safe integer 1..2147483647) 또는 commit(40자 hex) 중 정확히 하나, page ≤ 30, 선택 related=all.
     #             또는 listing=tree + head(40자 hex, 필수)·base(40자 hex)·after(1..4096자) — pr·commit·page·related와 섞으면 400.
     #             비교 파라미터(listing·after·base·head·related)는 diff 밖에서 400. (근거: apps/search-api/src/source/routes.ts:78, apps/search-api/src/source/routes.ts:88-100)
+    # blame         CR-135 (API-SRC-006). 기능 게이트 SOURCE_BLAME_ENABLED가 꺼져 있으면 인증 바로 뒤, {repository} 형식·접근
+    #             범위·파라미터를 보기 전에 404 NOT_FOUND {reason: feature_disabled}이고 GHE를 부르지 않는다. 켜져 있으면 위의 순서를
+    #             따르고, path(비어 있지 않음)와 revision(40자 hex) 둘 다 필수, 그 밖의 key는 400이다.
+    #             (근거: apps/search-api/src/source/routes.ts의 executeSource — 게이트 분기와 blame 분기)
     # =====================================================================================================================
 
 
@@ -1410,7 +1477,8 @@ components:
     ErrorCode:
       type: string
       description: >-
-        API 오류 코드 61개 전체. 이 파일의 조회들이 실제로 내는 코드는 각 *ErrorResponse가 code enum으로 좁힌다.
+        API 오류 코드 62개 전체(CR-135가 SOURCE_BLAME_UNSUPPORTED를 더했다). 이 파일의 조회들이 실제로 내는 코드는 각
+        *ErrorResponse가 code enum으로 좁힌다.
         HTTP 상태는 ERROR_HTTP_STATUS가 코드마다 하나로 정한다(M 번호 해석의 NO_SEQUENCE만 그 표를 읽고, 나머지 라우트는
         상태를 손으로 적는다 — 값은 표와 같다).
         (근거: packages/contracts/src/error-codes.ts:10-161, packages/contracts/src/error-codes.ts:168-230)
@@ -1419,6 +1487,7 @@ components:
         - SOURCE_RATE_LIMITED
         - SOURCE_PERMISSION_REQUIRED
         - SOURCE_UNAVAILABLE
+        - SOURCE_BLAME_UNSUPPORTED
         - QUERY_SYNTAX_ERROR
         - SHA_PREFIX_TOO_SHORT
         - QUERY_TOO_SHORT
@@ -1708,8 +1777,10 @@ components:
     FeatureDisabledErrorDetail:
       type: object
       description: >-
-        M 번호 기능이 꺼진 배포의 /merge-numbers/resolve(404 NOT_FOUND) detail. 다른 404와 달리 사유를 밝힌다.
-        (근거: apps/search-api/src/sequence/routes.ts:361-369, apps/search-api/src/sequence/merge-numbers.ts:101)
+        기능이 꺼진 배포의 404 NOT_FOUND detail — M 번호가 꺼진 배포의 /merge-numbers/resolve와, blame이 꺼진 배포의
+        /source/{repository}/blame(CR-135). 다른 404와 달리 사유를 밝힌다.
+        (근거: apps/search-api/src/sequence/routes.ts:361-369, apps/search-api/src/sequence/merge-numbers.ts:101,
+        apps/search-api/src/source/routes.ts의 executeSource 게이트 분기)
       required: [reason]
       additionalProperties: false
       properties:
@@ -1844,11 +1915,13 @@ components:
 
     SourceErrorResponse:
       description: >-
-        GET /api/v1/source/{repository}/{op} 오류. 401 UNAUTHENTICATED만 detail(LoginRequiredErrorDetail)이 있고 나머지는
-        detail이 없다. 400 INVALID_PARAMETER, 404 NOT_FOUND(저장소 미등록·범위 밖, 또는 GitHub not_found), 409 SOURCE_CHANGED
-        (diff?pr= 분석 중 PR이 바뀜), 429 SOURCE_RATE_LIMITED(retry-after 헤더), 503 SOURCE_PERMISSION_REQUIRED(GitHub App
-        권한), 503 PERMISSION_UNAVAILABLE(접근 범위 확인 실패), 502 SOURCE_UNAVAILABLE(그 밖의 모든 예외 — 이 경로는
-        UnhandledErrorResponse로 새지 않는다). 문구는 영어이며 GitHub 오류 원문을 싣지 않는다.
+        GET /api/v1/source/{repository}/{op} 오류. detail은 401 UNAUTHENTICATED(LoginRequiredErrorDetail)와 blame이 꺼진
+        배포의 404(FeatureDisabledErrorDetail, CR-135)에만 있고 나머지는 detail이 없다. 400 INVALID_PARAMETER, 404 NOT_FOUND
+        (저장소 미등록·범위 밖, 또는 GitHub not_found), 409 SOURCE_CHANGED(diff?pr= 분석 중 PR이 바뀜), 429
+        SOURCE_RATE_LIMITED(retry-after 헤더), 501 SOURCE_BLAME_UNSUPPORTED(blame만 — 이 GHES의 GraphQL에 blame이 없다, CR-135),
+        503 SOURCE_PERMISSION_REQUIRED(GitHub App 권한), 503 PERMISSION_UNAVAILABLE(접근 범위 확인 실패), 502
+        SOURCE_UNAVAILABLE(그 밖의 모든 예외 — 이 경로는 UnhandledErrorResponse로 새지 않는다). 문구는 영어이며 GitHub 오류
+        원문을 싣지 않는다.
         (근거: apps/search-api/src/source/routes.ts:50, apps/search-api/src/source/routes.ts:60-125)
       allOf:
         - $ref: '#/components/schemas/ErrorResponse'
@@ -1867,8 +1940,11 @@ components:
                     - SOURCE_PERMISSION_REQUIRED
                     - PERMISSION_UNAVAILABLE
                     - SOURCE_UNAVAILABLE
+                    - SOURCE_BLAME_UNSUPPORTED
                 detail:
-                  $ref: '#/components/schemas/LoginRequiredErrorDetail'
+                  anyOf:
+                    - $ref: '#/components/schemas/LoginRequiredErrorDetail'
+                    - $ref: '#/components/schemas/FeatureDisabledErrorDetail'
 
     # ================================================================================================= 공유 값
     SequenceSpaceState:
@@ -3767,3 +3843,68 @@ components:
           type: string
         body:
           type: [string, 'null']
+
+    SourceBlame:
+      type: object
+      description: >-
+        GET /api/v1/source/{repository}/blame 200 본문(correlation_id 없음, CR-135 / API-SRC-006). GitHub GraphQL
+        `Commit.blame`이 계산한 줄 구간별 귀속을 옮길 뿐이다 — Time-lapse(관측한 라인 이력의 추정)가 아니다. revision은
+        GitHub가 확인한 커밋 SHA, path는 요청 경로다. ranges는 GitHub 순서 그대로(시작 줄 오름차순, 겹치지 않음)이고 빈
+        파일이면 빈 배열이다. 본문은 없다 — 같은 revision의 /file로 읽는다. provider는 귀속을 계산한 곳이다.
+        (근거: packages/contracts/src/source.ts의 SourceBlame, apps/search-api/src/source/service.ts의 sourceBlame)
+      required: [repository, revision, path, provider, ranges]
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+        revision:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+        path:
+          type: string
+        provider:
+          type: string
+          const: github_graphql
+        ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SourceBlameRange'
+
+    SourceBlameRange:
+      type: object
+      description: >-
+        blame의 한 줄 구간. 줄 번호는 1부터이고 end_line을 포함한다(end_line ≥ start_line, 앞 구간과 겹치지 않음 — 서버가
+        확인하고 어기면 502다). age는 GitHub의 최근성 등급이다. commit은 그 줄들을 마지막으로 바꾼 커밋이다 — author_name은 Git
+        커밋의 작성자 이름, author_login은 작성자 이메일과 맞는 GHE 계정이며 GitHub가 주지 않으면 null이다(지어내지 않는다).
+        authored_at·committed_at은 GitHub가 준 시각 문자열 그대로다. 이메일은 싣지 않는다.
+        (근거: packages/contracts/src/source.ts의 SourceBlameRange, packages/github/src/source-blame.ts의 readRanges·readCommit)
+      required: [start_line, end_line, age, commit]
+      additionalProperties: false
+      properties:
+        start_line:
+          type: integer
+          minimum: 1
+        end_line:
+          type: integer
+          minimum: 1
+        age:
+          type: integer
+          description: GitHub 문서상 1(최신)~10(오래됨)이다. pr-search는 정수인지만 확인하고 값을 그대로 옮긴다.
+        commit:
+          type: object
+          required: [sha, message_headline, author_name, author_login, authored_at, committed_at]
+          additionalProperties: false
+          properties:
+            sha:
+              type: string
+              pattern: '^[0-9a-fA-F]{40}$'
+            message_headline:
+              type: string
+            author_name:
+              type: [string, 'null']
+            author_login:
+              type: [string, 'null']
+            authored_at:
+              type: string
+            committed_at:
+              type: string

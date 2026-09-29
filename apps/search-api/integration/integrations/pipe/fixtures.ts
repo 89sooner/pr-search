@@ -37,7 +37,7 @@ import {
 import { applyMappings, createEsClient, resolveClientOptions, switchAliasesForTests } from '@prs/es';
 import { authRepo, pipeIntegrationRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import type { Redis } from '@prs/bus';
-import type { GitHubSourceReader } from '@prs/github';
+import type { GitHubSourceReader, SourceBlameRange } from '@prs/github';
 import { buildServer, type ServerDeps } from '../../../src/server.js';
 import type { AuthContext, AuthRedis } from '../../../src/auth/context.js';
 import type { SearchApiConfig } from '../../../src/config.js';
@@ -78,6 +78,15 @@ export const OPERATOR: UserFixture = { userId: 'github:5003', login: 'olivia-psi
 export const STRANGER: UserFixture = { userId: 'github:5009', login: 'stranger-psi', gheId: 5009, subject: 'pipe-user-x' };
 
 export const SHA = 'a'.repeat(40);
+
+/**
+ * 대역 source reader의 blame 줄 구간 (CR-135). `@prs/github`가 GraphQL 응답을 옮긴 모양(camelCase)이다 — 원본 경로가
+ * 이것을 계약 모양(snake_case)으로 바꾼다. 두 번째 구간은 작성자 이메일과 맞는 GHE 계정이 없다(`authorLogin: null`).
+ */
+export const BLAME_RANGES: readonly SourceBlameRange[] = [
+  { startLine: 1, endLine: 2, age: 10, commit: { sha: 'b'.repeat(40), messageHeadline: '결제 재시도 모듈 뼈대', authorName: 'Alice', authorLogin: 'alice-psi', authoredAt: '2026-07-02T01:14:09Z', committedAt: '2026-07-02T01:20:31Z' } },
+  { startLine: 3, endLine: 3, age: 1, commit: { sha: SHA, messageHeadline: '결제 재시도 구현', authorName: 'Build Bot', authorLogin: null, authoredAt: '2026-08-19T04:00:00Z', committedAt: '2026-08-19T04:00:00Z' } },
+];
 
 // ---------------------------------------------------------------- TLS
 
@@ -259,6 +268,11 @@ export interface Faults {
    */
   searchError: unknown;
   msearchError: unknown;
+  /**
+   * 대역 source reader의 `blame`이 던질 예외 (CR-135). `null`이면 `BLAME_RANGES`를 준다. GitHub 실패의 계약 코드
+   * 매핑(501·429·503·502)을 PIPE 경로의 실제 응답으로 보려고 둔다 — 분류 자체는 `@prs/github`의 몫이다.
+   */
+  blameError: unknown;
 }
 
 export interface Replica {
@@ -324,6 +338,16 @@ export interface HarnessOptions {
   readonly devAllowlist?: readonly number[];
   readonly otherAllowlist?: readonly number[];
   readonly mergeNumberEnabled?: boolean;
+  /**
+   * source blame 기능 게이트 (CR-135, `SOURCE_BLAME_ENABLED`). **기본은 꺼짐이다** — 운영 기본값과 같고, 그 상태의
+   * exchange·`/context`가 CR-135 전과 같다는 것이 PSI-1.0 유지의 근거다(`blame-disabled.test.ts`).
+   */
+  readonly blameEnabled?: boolean;
+  /**
+   * source 리더를 바꿔 끼운다 (CR-135). 기본은 아래의 대역(Proxy)이다 — `blame-real-path.test.ts`가 실제
+   * `GitHubTransport` → GHE 대역 HTTP 리더를 넣어 PIPE 경로 전체(mTLS → grant → 조회 → GraphQL)를 본다.
+   */
+  readonly sourceReader?: () => GitHubSourceReader;
 }
 
 const AUTH_CONFIG = { enabled: true, cookieSecure: true, loginPath: '/auth/login', groupRoleMap: new Map<string, never>() } as const;
@@ -475,7 +499,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     [USER_B.login, USER_B.gheId],
     [OPERATOR.login, OPERATOR.gheId],
   ]);
-  const faults: Faults = { replayDown: false, directoryDown: false, scopeDown: false, searchError: null, msearchError: null };
+  const faults: Faults = { replayDown: false, directoryDown: false, scopeDown: false, searchError: null, msearchError: null, blameError: null };
   const publicLogs: Record<string, unknown>[] = [];
   const servedEs = faultyEs(es, faults);
   const sourceCalls: string[] = [];
@@ -508,8 +532,13 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
   const reader = new Proxy(
     {},
     {
-      get: (_target, method: string) => method === 'then' ? undefined : async () => {
+      get: (_target, method: string) => method === 'then' ? undefined : async (...args: unknown[]) => {
         sourceCalls.push(method);
+        // CR-135: `blame(ref, revision, path, options)`. revision·path는 요청 값을 그대로 돌려준다(GitHub가 확인한 값의 대역).
+        if (method === 'blame') {
+          if (faults.blameError !== null) throw faults.blameError;
+          return { revision: String(args[1]), path: String(args[2]), ranges: BLAME_RANGES };
+        }
         if (method === 'repository') return { default_branch: 'main' };
         if (method === 'branch') return { commit: { sha: SHA } };
         if (method === 'commit') return { sha: SHA, tree: { sha: 'c'.repeat(40) }, parents: [], message: 'm', author: { name: 'a' } };
@@ -534,6 +563,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
     auth: AUTH_CONFIG,
     searchCursorKey: TEST_CURSOR_KEY,
     mergeNumberEnabled: options.mergeNumberEnabled ?? true,
+    sourceBlameEnabled: options.blameEnabled ?? false,
     pipeIntegration: setting,
   } as SearchApiConfig;
 
@@ -556,7 +586,8 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
       search: { pool: replicaPool, es: servedEs, cursorSigner: TEST_CURSOR_SIGNER, resolveNames },
       repositories: { pool: replicaPool, es: servedEs, cursorSigner: TEST_CURSOR_SIGNER },
       sequence: { pool: replicaPool, es: servedEs, cursorSigner: TEST_CURSOR_SIGNER, resolveNames },
-      source: { pool: replicaPool, reader: () => reader, es: servedEs },
+      // `blameEnabled`는 `runtime.ts`의 `buildServerDeps`와 같이 설정에서 읽는다 — PIPE 실행(`executions.source`)도 이 객체를 펼친다.
+      source: { pool: replicaPool, reader: options.sourceReader ?? (() => reader), es: servedEs, blameEnabled: config.sourceBlameEnabled === true },
     };
   };
 

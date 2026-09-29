@@ -254,6 +254,11 @@ services:
       OIDC_GROUP_ROLE_MAP: ${OIDC_GROUP_ROLE_MAP:-}
       # M 번호 (WP-074). 꺼져 있으면 API-SEQ-007이 404이고 목록·상세·범위에서 M 키가 생략된다.
       MNUMBER_ENABLED: ${MNUMBER_ENABLED:-false}
+      # source blame (CR-135 / FR-SRC-005). 기본 꺼짐 — 꺼져 있으면 API-SRC-006과 PIPE
+      # `read.source.blame`이 404(`feature_disabled`)이고 GHE GraphQL을 부르지 않는다.
+      SOURCE_BLAME_ENABLED: ${SOURCE_BLAME_ENABLED:-false}
+      # 비우면 GHE_API_URL에서 도출한다(`…/api/v3` → `…/api/graphql`). search-api만 받는다.
+      GHE_GRAPHQL_URL: ${GHE_GRAPHQL_URL:-}
       # ── GitHub Operations Plane (REL-007 R0 / WP-077, CR-086) ──────────
       # 기본 꺼짐. 켜면 `/api/v1/gh/*`가 서고 **Operations App** 자격이 필수다 — 수집용
       # Data App(`GHE_APP_ID`)·로그인용 OAuth App·표기 App과 자격을 공유하지 않는다

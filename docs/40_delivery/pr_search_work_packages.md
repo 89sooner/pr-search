@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.89 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.91 | 갱신일: 2026-09-29
+
+## WP-116 PIPE용 GraphQL blame (CR-135)
+
+- 요구사항: `FR-SRC-005`(신설), `FR-INT-001` AC-5(고정 조회 11종), `API-SRC-006`(새 세션 조회)·`API-INT-015`(PIPE `read.source.blame`), ADR-027. 선행: WP-085(source 조사, CR-097), WP-097(PIPE 연동, CR-112), WP-113(요청 기한·취소·원시 읽기 상한, CR-132).
+- 범위: (1) `packages/github` — 설정 `graphqlUrl`(`GHE_GRAPHQL_URL`, 비면 `deriveGraphqlUrl`), 전송 `postGraphql`(조회 문서만, GraphQL 동시 상한 2, 한도 헤더를 REST 토큰 상태와 분리, 재시도 없음), `source-blame.ts`(고정 query `SOURCE_BLAME_QUERY`, 분류 순서, `SourceBlameUnsupportedError`), 리더의 `blame`, GHE 대역 `POST /api/graphql`(mock-source 이력의 blame 계산, 오류 주입, 요청 기록). (2) `apps/search-api` — 설정 `SOURCE_BLAME_ENABLED`, `executeSource`의 `blame`(게이트·키 검사·오류 대응), `sourceBlame`, `index.ts`의 `graphqlUrl` 배선, `@prs/contracts`의 `SourceBlame`·`SourceBlameRange`와 오류 코드 `SOURCE_BLAME_UNSUPPORTED`(501). (3) PIPE — operation `read.source.blame`과 capability `source_blame:read`(게이트가 켜졌을 때만), handoff OpenAPI·operation map·예시·manifest·D-26, 계약·적합성·통합 시험(`blame-disabled.test.ts`). (4) 시험 — 단위(설정·전송·분류·경로·게이트), GHE 대역 위 실제 전송 통합, 회귀(POST 한 곳·배선 가드), 변이. (5) 문서·배포 — SRS·PRD·용어집·매트릭스·ADR·API 계약·백엔드·보안·인프라·관측성·PIPE 공유 계약 00·BFF 지시서 02, RUNBOOK 7.L·8장, `.env.example`, compose의 search-api 두 줄.
+- 제외: 웹 화면, Time-lapse·Diff의 변경, 줄 범위·페이지 인자, blame 결과의 저장·캐시, 작성자 이메일, 사내 GHES를 거친 검증, PIPE BFF 구현·배포(별도 저장소), 23차 7번(mTLS·인증 간소화 검토서), Release 발행, 사내 적용.
+- 완료 기준: 수정 전 코드에서 새 시험이 실패하는 것을 먼저 본다. 수정 뒤에는 PIPE 통합 하네스(127.0.0.1의 실제 mTLS 리스너, 실제 assertion·grant 교환)에 blame을 청해, grant 판정·접근 범위 → search-api 조회 → 실제 `GitHubTransport` → GHE 대역 `/api/graphql`까지 거쳐 줄 구간별 귀속 커밋을 받는다(`blame-real-path.test.ts`). 같은 경로에서 범위 밖 404(GraphQL 호출 0), 미지원 501, 권한 503, 한도 429(`Retry-After`), 일부 결과 502를 각각 확인하고, 게이트가 꺼진 배포의 404(capability·operation 없음, GHE 호출 0)는 `blame-disabled.test.ts`가 확인한다. 기존 Time-lapse는 그대로 동작한다. 새 시험은 변이로 죽는 것을 본다. 빌드 산출물을 배포 환경 변수로 띄운 확인은 이 WP에 넣지 않는다 — 환경 변수에서 전송까지의 배선은 설정·runtime 단위 시험과 회귀 문자열 가드가 조각으로 건다.
+- 상태: in_progress — 브랜치 `feature/cr135-pipe-blame`. 검증은 원장 6.126장이다.
 
 ## WP-115 수동 대조 취소 시험의 대기 기준 (CR-134)
 
@@ -8,7 +16,7 @@
 - 범위: `apps/pipeline-worker/integration/reconcile/manual-run.test.ts` — 냉시작 스윕이 끝나기를 기다리는 기준을 스윕과 같은 질의로 센 활성 저장소 수로 바꾸고 주석을 고친다.
 - 제외: 제품 코드, 잔재를 남기는 통합 파일의 정리(DEV-799), 부하 시험 p95의 CI 변동(DEV-798), Release 발행, 사내 적용.
 - 완료 기준: 잔재 활성 저장소를 넣은 격리 DB에서 수정 전 시험이 CI와 같은 모양으로 실패하는 것을 먼저 보고, 수정 뒤에는 같은 DB와 깨끗한 DB에서 통과한다. 통합 전량을 새 DB로 돌려 통과하고, 병합 커밋의 main CI integration이 초록이다.
-- 상태: in_progress — 브랜치 `fix/cr134-dev796-manual-run`. 검증은 원장 6.125장이다.
+- 상태: done — main `a02a145`(PR #258 squash 병합, 2026-09-29). 검증·병합 판정은 원장 6.125장이다.
 
 ## WP-114 Files & folders의 하위 파일명 검색 (CR-133)
 
@@ -274,7 +282,8 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | in_progress — 브랜치 `fix/cr134-dev796-manual-run`, 원장 6.125장 |
+| WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | WP-085, WP-097, WP-113 | in_progress — 브랜치 `feature/cr135-pipe-blame`, 원장 6.126장 |
+| WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | done — main `a02a145`(PR #258), 원장 6.125장 |
 | WP-114 | Files & folders의 하위 파일명 검색 | 요구사항 변경 (CR-133) | WP-085, WP-113 | done — main `2e94b71`(PR #257), 원장 6.124장 |
 | WP-113 | Diff·Time-lapse·파일 트리의 총량 제한 해소 | 요구사항 변경 + correction (CR-132) | WP-085, WP-097, WP-110 | done — main `aa29c5c`(PR #256), 원장 6.123장 |
 | WP-112 | 작업 공간의 조건 변경 추천 | 범위 공백 보완 (CR-131) | WP-087, WP-096, WP-109 | done — main `c33ea25`(PR #255), 원장 6.122장 |

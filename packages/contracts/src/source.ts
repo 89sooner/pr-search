@@ -23,6 +23,18 @@ export interface SourcePullRequest { number: number; title: string; body: string
 export interface SourcePathEntry { path: string; kind: 'file' | 'symlink' }
 export interface SourcePaths { repository: string; revision: string; paths: SourcePathEntry[]; next_after: string | null; incomplete: boolean }
 /**
+ * blame의 한 줄 구간 (CR-135, API-SRC-006 — FR-SRC-005). 줄 번호는 1부터이고 `end_line`을 포함한다. `age`는 GitHub의 최근성
+ * 등급(1 최신 ~ 10 오래됨)이다. `commit`은 그 줄들을 마지막으로 바꾼 커밋이다 — `author_name`은 Git 커밋의 작성자 이름,
+ * `author_login`은 작성자 이메일과 맞는 GHE 계정이고, GitHub가 주지 않으면 `null`이다(지어내지 않는다). 이메일은 싣지 않는다.
+ */
+export interface SourceBlameRange { start_line: number; end_line: number; age: number; commit: { sha: string; message_headline: string; author_name: string | null; author_login: string | null; authored_at: string; committed_at: string } }
+/**
+ * 고정 revision의 파일 blame (CR-135, API-SRC-006 — FR-SRC-005). GitHub GraphQL `Commit.blame`이 계산한 귀속을 옮길 뿐이다 —
+ * Time-lapse(관측한 라인 이력의 추정)가 아니다. `revision`은 GitHub가 확인한 커밋 SHA, `ranges`는 GitHub 순서 그대로(시작 줄
+ * 오름차순, 겹치지 않음)이며 빈 파일이면 빈 배열이다. 본문은 없다 — 같은 revision의 `/file`로 읽는다.
+ */
+export interface SourceBlame { repository: string; revision: string; path: string; provider: 'github_graphql'; ranges: SourceBlameRange[] }
+/**
  * `listing=tree`(CR-132)는 두 커밋의 트리를 직접 비교한 목록이다: `listing: 'tree'`, 이어 읽기는 `next_after`, `truncated`는
  * GitHub가 디렉터리 목록을 잘랐다는 뜻, `pull_requests`는 늘 비어 있다(관련 PR은 일반 비교 응답의 것이다).
  */

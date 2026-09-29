@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-135 / FR-SRC-005, FR-INT-001 (2026-09-29): 새 경로 둘 — API-SRC-006 `GET /api/v1/source/{repository}/blame`(세션 조회)과 API-INT-015 `GET /internal/integrations/pipe/v1/read/source/{repository}/blame`(PIPE operation `read.source.blame`). 새 오류 코드 하나 — `SOURCE_BLAME_UNSUPPORTED`(501, 6장). 기능 게이트 `SOURCE_BLAME_ENABLED`(기본 꺼짐)가 꺼져 있으면 두 경로 모두 404 `feature_disabled`이고, PIPE의 capability `source_blame:read`와 operation 목록에 나타나지 않는다. PIPE의 `protocol_version`은 `PSI-1.0` 그대로다 — 8장의 예외. 세부는 「CR-097 — 인가된 일시 소스 열람」 절의 표와 「CR-135 blame」 문단이다.
+>
 > CR-133 / FR-SRC-001 AC-2·AC-5 (2026-09-29): 새 경로 하나 — API-SRC-005 `GET /api/v1/source/{repository}/paths`(Files & folders 검색이 읽는 고정 revision의 파일 경로 목록, 세션 조회). 새 오류 코드는 없다. PIPE 연동(API-INT-*)에는 싣지 않는다(FR-INT-001 고정 목록 밖, `/read/source/{repository}/paths`는 404). 세부는 「CR-097 — 인가된 일시 소스 열람」 절의 표와 「CR-133 경로 목록」 문단이다.
 >
 > CR-130 / FR-SEQ-002 AC-9 (2026-09-29): 새 경로·새 오류 코드는 없다. API-SEQ-001의 `q`에 `kind:`·`-kind:`가 있으면 **신원·권한 확인 뒤, 구간 검사·조회 전에** 400 `INVALID_PARAMETER`(`detail`: `field: "q"`, `key: "kind"`, `reason: "kind_not_supported_in_range"`, `supported_keys`)다. 전에는 결과와 무관하게 500이었다(DEV-788). 구간의 `supported_keys`는 `mnum`·`pr_number`·`kind`를 뺀 목록이다(CR-106의 `range_key_not_supported_here` 거절도 같은 목록). API-SRCH-004의 `kind:`는 그대로다.
@@ -42,10 +44,11 @@
 | API-INT-012 | GET | `/read/source/{repository}/history` | mTLS + grant | API-SRC-002 | `ref`, `path`, `page` |
 | API-INT-013 | GET | `/read/source/{repository}/diff` | mTLS + grant | API-SRC-004 | `pr`, `commit`, `page` |
 | API-INT-014 | GET | `/read/source/{repository}/file` | mTLS + grant | API-SRC-003 | `path`, `revision` |
+| API-INT-015 | GET | `/read/source/{repository}/blame` | mTLS + grant — 게이트(`SOURCE_BLAME_ENABLED`)가 켜진 배포에서만 capability `source_blame:read`와 `/context`의 operation 목록에 나타난다(CR-135) | API-SRC-006 | `path`, `revision` |
 
-- **조회(005~014)는 원본 실행 함수를 그대로 부른다.** 성공 본문과 원본의 오류(질의 문법·커서·source·에폭·범위 밖 404·조회 중 503)는 원본과 같은 모양·상태다. 주체는 grant의 canonical 사용자이고, 접근 범위는 그 사용자의 기존 범위와 client 허용 목록의 교집합을 명시적 저장소 목록으로 만든 것이다. 교집합이 비면 원본이 0개 저장소 사용자에게 답하던 그대로다 — 검색·식별자 해석·상세 503 `PERMISSION_UNAVAILABLE`, 저장소 목록 빈 200, source·M 번호 404.
+- **조회(005~015)는 원본 실행 함수를 그대로 부른다.** 성공 본문과 원본의 오류(질의 문법·커서·source·에폭·범위 밖 404·조회 중 503)는 원본과 같은 모양·상태다. 주체는 grant의 canonical 사용자이고, 접근 범위는 그 사용자의 기존 범위와 client 허용 목록의 교집합을 명시적 저장소 목록으로 만든 것이다. 교집합이 비면 원본이 0개 저장소 사용자에게 답하던 그대로다 — 검색·식별자 해석·상세 503 `PERMISSION_UNAVAILABLE`, 저장소 목록 빈 200, source·M 번호 404.
 - **연동 계층은 원본보다 엄격하다.** 중복되거나 목록에 없는 query key, 깨진 percent-encoding·C0 제어 문자·`#`, 경로 파라미터 `{repository}`의 이중 인코딩(`%252F`)·dot segment는 400 `INVALID_REQUEST`다. 원본의 느슨한 처리는 바꾸지 않고 DEV-730·DEV-731로 기록했다. `{repository}`는 `owner%2Fname` 한 조각이다. query 값의 뜻은 원본 그대로다 — 예를 들어 식별자 해석의 `repository` 힌트는 형식이 틀리면 두 경로 모두 조용히 버린다(어느 경우도 접근 범위 밖을 열지 않는다).
-- **접근 범위 확인 실패는 조회 10종 모두 503이다.** 원본 저장소 목록은 같은 실패를 잡지 못해 500을 내지만(DEV-732) 연동은 `FR-AUTH-002`대로 503 `PERMISSION_UNAVAILABLE`로 옮긴다. 봉투는 조회마다 다르다 — 저장소 목록은 연동 봉투, 나머지는 원본 실행 함수가 먼저 잡아 원본 봉투다.
+- **접근 범위 확인 실패는 조회 모두 503이다**(CR-135의 blame 포함 — 게이트가 꺼져 있으면 범위 확인 전에 404 `feature_disabled`다). 원본 저장소 목록은 같은 실패를 잡지 못해 500을 내지만(DEV-732) 연동은 `FR-AUTH-002`대로 503 `PERMISSION_UNAVAILABLE`로 옮긴다. 봉투는 조회마다 다르다 — 저장소 목록은 연동 봉투, 나머지는 원본 실행 함수가 먼저 잡아 원본 봉투다.
 - **커서.** 연동은 client와 canonical 사용자를 커서 지문 재료에 더한다. 결속이 없는 공개 커서의 지문은 이전과 한 글자도 다르지 않다(추가 전용). 그래서 공개 커서는 연동에서, 연동 커서는 공개 경로에서 `CURSOR_INVALID`다.
 - **연동 고유 오류**는 `{ "error": { "code", "message", "retryable" }, "correlation_id" }` 봉투다. 코드 21종과 상태·재시도 가능 여부의 정본은 `apps/search-api/src/integrations/pipe/errors.ts`의 `PSI_ERRORS`이며 메시지는 코드별 고정 문구다.
 - **발급 응답**은 `protocol_version`(`PSI-1.0`), `token_type`(`Bearer`), `access_token`(`psig1_` + 32바이트 base64url), `grant_id`, `expires_in`(300 이하), `expires_at`, `auth_context_id`, `binding_version`, `identity.ghe_login`, `capabilities`, `correlation_id`다. 수명은 `min(발급 + 300초, auth_expires_at, client 인증서 만료)`다.
@@ -62,6 +65,7 @@
 | API-SRC-003 | `/file` | revision(40자SHA), 파일 path, 선택 `offset`(CR-132, 바이트 위치) | status(text/missing/binary/too_large/unsupported), text/null, size, sha, reason. `offset`을 보내면 본문의 한 창(최대 1 MiB)과 `offset`·`next_offset` |
 | API-SRC-004 | `/diff` | pr 또는 commit 중 하나, page(1~30), 선택 `related=all`(CR-132). 또는 `listing=tree`와 `head`(필수)·`base`·`after`(CR-132) | base/head, commit, files100개(path/previous_path/status/additions/deletions), next_page, truncated, 관련 PR. `listing=tree`는 files 1,000개(줄 수·previous_path `null`)와 `listing`·`next_after` |
 | API-SRC-005 | `/paths` (CR-133) | revision(40자SHA, 필수), 선택 `after`(직전 `next_after`). 다른 키는 400 | repository, revision, paths(path, kind: file/symlink — 디렉터리·서브모듈 제외, 경로 순서), next_after(더 있으면 마지막 경로, 끝이면 `null`), incomplete(GitHub가 디렉터리 목록을 잘랐다) |
+| API-SRC-006 | `/blame` (CR-135) | revision(40자SHA, 필수), 파일 path(필수). 다른 키는 400. 기능 게이트 `SOURCE_BLAME_ENABLED`가 꺼져 있으면 404 `feature_disabled` | repository, revision(GitHub가 확인한 커밋 SHA), path, provider(`github_graphql`), ranges(start_line·end_line — 1부터·끝 포함, age, commit: sha·message_headline·author_name·author_login·authored_at·committed_at — 이름·계정은 없으면 `null`). 본문 없음 |
 
 `/file`은 `offset`을 보내지 않으면 256KiB·4,000라인·UTF8 한도다(예전 호출 — CR-132 뒤에도 그대로다). 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리 탐색은 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다(검색의 경로 목록은 아래 「CR-133 경로 목록」). `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. **그 배열이 무엇인지는 CR-116이 정정한다 — 계약의 모양은 그대로다.** 배열은 「언젠가 한 번 그 커밋을 포함했던 모든 PR」이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다(같은 커밋의 다른 PR 연결과 실제 병합 근거는 남는다). 그래서 이 열의 값은 세 가지 다른 사실을 계속 가른다 — **빈 배열**은 「검증한 범위에서 이 커밋에 연결된 PR이 0개」라는 사실의 진술이고, **`null`**은 「아직 확정하지 못했다」이며, **`pull_requests_unavailable: true`**는 「조회 자체를 하지 못했다」다. 앞의 둘을 합치거나 빈 배열을 필드 부재로 바꾸면 이 구분이 사라진다. 연결의 제거는 그 PR의 커밋 목록이 원격의 전부임을 증명한 관측에만 허용되므로, 증명하지 못한 동안에는 옛 번호가 남아 있을 수 있고 그 사실은 응답이 아니라 운영 경로(RB-29)가 답한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
@@ -69,7 +73,9 @@
 
 **CR-133 경로 목록.** `/paths`는 고정 revision의 루트 트리를 `recursive=1`로 한 번 읽어(호출 기한 45초) 잘리지 않았으면 모든 잎(파일·심볼릭 링크)을 경로 순서(`compareTreePaths`)로 한 응답에 싣고 `next_after: null`이다. GitHub가 재귀 목록을 잘랐거나(10만 항목·7MB) 그 호출이 기한을 넘기거나 5xx면 비재귀 트리를 디렉터리 단위로 걸어(`walkTreeDiff`의 빈 기준 트리) 경로 순서로 잇는다. 한 페이지는 경로 5,000개 또는 디렉터리 100개에서 끝나므로 경로가 적거나 없는 페이지도 `next_after`가 있으면 계속이다. `after`로 이어 읽으면 늘 걷는다. 입력은 `revision`·`after`뿐이고 다른 키는 400 `INVALID_PARAMETER`다. 접근 범위 확인이 GHE보다 먼저이고(동일 404), 요청 기한 120초와 연결 끊김 취소(감사 `CANCELLED`)는 CR-132와 같다. 감사 query에는 `revision`·`after`와 관측 revision만 들어간다(경로 목록·검색어 없음). 본문은 읽지 않는다. PIPE 연동 경로는 없다.
 
-> 상태: review | 버전: v0.53 | 갱신일: 2026-09-29
+**CR-135 blame.** `/blame`(API-SRC-006)은 고정 revision의 파일 하나에서 줄 구간마다 그 줄을 마지막으로 바꾼 커밋을 GitHub GraphQL `Commit.blame(path:)`에게 묻고 그 결과를 옮긴다 — Time-lapse(관측 라인 이력의 추정)가 아니다(FR-SRC-005). **기능 게이트** `SOURCE_BLAME_ENABLED`(search-api, 기본 `false`, `true`·`false`·빈 값 외에는 기동 거부)가 꺼져 있으면 경로는 등록된 채 신원 확인(401) 뒤·저장소 형식·범위·파라미터 검사 전에 404 `NOT_FOUND` `detail: {"reason":"feature_disabled"}`(「Blame is not enabled on this deployment.」)이고 리더·GHE를 부르지 않는다 — API-SEQ-007(M 번호)과 같은 봉투다. 켜져 있으면 순서는 다른 source 조회와 같다: 세션(PIPE는 grant) → 저장소 형식 → 접근 범위(PIPE는 사용자 범위 ∩ 허용 목록) → 등록 확인(범위 밖과 같은 404, GraphQL 호출 0) → 키 검사 → GHE. 입력은 `path`(비어 있지 않은 파일 경로, 기존 path 규칙)와 `revision`(40자 SHA — 대소문자를 가리지 않고 GHE에는 소문자로 보낸다)뿐이고 다른 키는 400 `INVALID_PARAMETER`다(PIPE는 엄격한 query 파서의 400 `INVALID_REQUEST`가 먼저다). 줄 범위·페이지 인자는 없다 — `Blame.ranges`는 한 응답에 전부 온다. 200 본문은 `{ repository, revision, path, provider: "github_graphql", ranges: [{ start_line, end_line, age, commit: { sha, message_headline, author_name, author_login, authored_at, committed_at } }] }`다. `revision`은 GitHub가 확인한 커밋 SHA이고, 구간은 GitHub 순서(시작 줄 오름차순, 겹침 없음) 그대로이며 줄 번호는 1부터·`end_line` 포함이다. `age`는 GitHub의 최근성 등급(1 최신 ~ 10 오래됨)이다. `author_name`·`author_login`은 GitHub가 주지 않으면 `null`이고(이름으로 계정을 짐작하지 않는다) 이메일은 싣지 않는다. 빈 파일이면 `ranges`가 빈 배열이다. 본문은 없다 — 같은 revision의 `/file`(API-SRC-003)로 읽는다. **오류 대응**: 스키마에 `blame`이 없음 → 501 `SOURCE_BLAME_UNSUPPORTED`(「This GitHub Enterprise Server does not provide blame through its API.」), 없는 저장소 객체·경로(커밋이 아닌 SHA 포함) → 404 `NOT_FOUND`, 한도(200의 `RATE_LIMITED`, 200·403의 부 한도 문구, 429) → 429 `SOURCE_RATE_LIMITED`와 `Retry-After`, 401·403·`FORBIDDEN` → 503 `SOURCE_PERMISSION_REQUIRED`, 5xx·그 밖의 2xx가 아닌 응답·일부 결과(`errors`와 `data`가 함께 온 것)·알 수 없는 모양·기한 초과 → 502 `SOURCE_UNAVAILABLE`. HTTP 200이어도 `errors`가 하나라도 있으면 blame으로 내지 않고, 성공 응답의 `x-ratelimit-remaining: 0`은 실패가 아니다. 원격 문구는 응답·로그에 싣지 않고 재시도하지 않는다. GHE에는 서버 소유 고정 query 하나를 조회 문서로만 `POST`하며(ADR-027), 호출 기한 30초·GraphQL 동시 상한 2·요청 기한 120초(CR-132)와 연결 끊김 취소(감사 `CANCELLED`)를 따른다. 감사는 `entity.view` `source:blame:<저장소>`에 `path`·`revision`과 관측 revision만 남긴다(구간·본문 없음). PIPE 연동 경로는 API-INT-015(`read.source.blame`, 키 `path`·`revision`)이고, 게이트가 켜진 배포에서만 capability `source_blame:read`와 `/context`의 operation 목록에 나타난다 — 경로는 늘 등록되며 꺼져 있으면 원본 봉투의 404 `feature_disabled`다. 정확한 스키마의 정본은 handoff OpenAPI·operation map이고, PIPE 쪽 변경 사유는 [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md) D-26이다.
+
+> 상태: review | 버전: v0.54 | 갱신일: 2026-09-29
 
 ## 1. 목적
 
@@ -161,6 +167,7 @@
 | API-INT-012 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/history` | API-SRC-002 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-002 |
 | API-INT-013 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/diff` | API-SRC-004 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-003 |
 | API-INT-014 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/file` | API-SRC-003 실행 | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-003 |
+| API-INT-015 | GET | `/internal/integrations/pipe/v1/read/source/{repository}/blame` | API-SRC-006 실행 (CR-135 — 게이트가 켜진 배포에서만 광고) | mTLS + grant + (사용자 범위 ∩ 허용 목록) | FR-INT-001, FR-SRC-005 |
 
 **R0 구현 계약 요약 (CR-086 / WP-077).** 열 개 라우트가 `apps/search-api/src/gh/routes.ts`에 있고 web 프록시가 `/api/gh/…`로 연다. 실행 요청 본문은 `{ capability_id, context: { repository: "owner/name" }, flags: { "--state": …, "--limit": … }, output: { json_fields: [...] } }`이며, 폼과 서버가 같은 `evaluateInvocation`으로 판정한다. 실행 뷰(`toExecutionView`)는 `FR-GH-012` AC-1의 항목(실행 ID·사용자·GitHub 행위자·호스트·저장소·capability·gh 버전·manifest 버전·해시·가려진 argv·환경 키·위험도·권한 판정·시각·종료 코드·출력 해시·상관 ID)에 typed 결과(`pr_list_v1`: `rows`·`row_count`·`possibly_more`·`stdout_truncated` — CR-089부터 `pr_list_v2`, 아래 R1b)와 무해화된 발췌(`stdout`·`stderr`, `truncated`), `output_binary`, 요청 당시 `invocation`을 더한 것이다. 배포가 기능을 끄면(`GH_OPERATIONS_ENABLED=false`) 라우트가 등록되지 않아 404이며 화면은 그것을 「열리지 않았다」로 그린다. 같은 키의 재요청은 `GH_DUPLICATE_REQUEST`(409, `detail.execution_id`)이고 화면은 그 실행에 붙는다.
 
@@ -3246,6 +3253,7 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | `SOURCE_RATE_LIMITED` | 429 | GHE 조회 한도 | Retry-After 이후 재시도 |
 | `SOURCE_PERMISSION_REQUIRED` | 503 | Data App의 Contents read 권한 미비 | 운영자에게 앱 권한 확인 요청 |
 | `SOURCE_UNAVAILABLE` | 502 | GHE 소스 조회 실패 | 재시도 |
+| `SOURCE_BLAME_UNSUPPORTED` | 501 | 이 GHES의 GraphQL 스키마에 `Commit.blame`이 없음 (CR-135, API-SRC-006) | 운영자에게 GHES의 blame 지원 확인 요청 |
 | `QUERY_SYNTAX_ERROR` | 400 | 질의 파싱 실패 | 오류 구간 수정 |
 | `SHA_PREFIX_TOO_SHORT` | 400 | hex 접두 7자 미만 | 더 긴 SHA 입력 |
 | `QUERY_TOO_SHORT` | 400 | 검색어 1자 | 2자 이상 입력 |
@@ -3331,6 +3339,8 @@ FR-SEQ-007과 FLOW-004의 개인 탐색 상태다. 모든 메서드는 인증 �
 | API-STAT-001~004, API-SEQ-004~005, API-REL-003~004, API-REL-006 | stable | 위와 동일 |
 | API-ADM-* | internal | 운영 콘솔 전용. 프런트엔드와 동시 배포 전제로 변경 가능 |
 | API-ING-001 | external | GHE 계약. 변경 시 웹훅 재등록 필요 |
-| API-INT-001~014 | external — 두 저장소 공동 계약 `PSI-1.0` (CR-112, 기본 꺼짐) | 한쪽 저장소만 바꾸지 않는다. 변경은 `protocol_version`과 handoff `manifest.json`의 계약 checksum을 함께 올리고 CONTRACT_DIFF에 사유·호환성·보안 영향을 적는다. 조회(005~014)의 성공·오류 본문은 원본 API의 안정성 규칙을 따른다 |
+| API-INT-001~015 | external — 두 저장소 공동 계약 `PSI-1.0` (CR-112, 기본 꺼짐. 015는 CR-135) | 한쪽 저장소만 바꾸지 않는다. 변경은 `protocol_version`과 handoff `manifest.json`의 계약 checksum을 함께 올리고 CONTRACT_DIFF에 사유·호환성·보안 영향을 적는다(015의 `protocol_version` 예외는 표 아래). 조회(005~015)의 성공·오류 본문은 원본 API의 안정성 규칙을 따른다 |
+
+**CR-135 예외 — API-INT-015는 `protocol_version`을 올리지 않는다.** 위 규칙은 PIPE 계약을 바꿀 때 `protocol_version`을 함께 올리라고 하지만, 새 operation `read.source.blame`은 가법적이고 기능 게이트(`SOURCE_BLAME_ENABLED`, 기본 꺼짐)가 켜진 배포에서만 capability `source_blame:read`와 `/context`의 operation 목록에 나타난다. 기본 배포에서 exchange와 `/context`의 capabilities·operations가 CR-135 전과 같다는 사실을 PIPE 통합 시험 `blame-disabled.test.ts`가 건다 — 그래서 PSI-1.0 클라이언트는 영향이 없고 `PSI-1.0` 그대로다. PIPE는 capability가 있을 때만 이 operation을 부른다. 계약 checksum은 manifest가 새로 적고, 사유·호환성·보안 영향은 [CONTRACT_DIFF](../../handoff/pipe-search-integration/v1/CONTRACT_DIFF.md) D-26이 소유한다. PSI-1.1로 올리는 대안은 버전 상수·예시·발급 시험·적합성 벡터까지 번지고 PIPE 쪽 변경을 강제해 택하지 않았다(ADR-027).
 
 버전 정책: 경로 접두 `/api/v1`. 하위 호환 변경(필드 추가, 새 enum 값에 대한 관대한 처리)은 버전을 올리지 않는다. 필드 제거·타입 변경·의미 변경은 `/api/v2`를 신설하고 최소 1개 릴리스 동안 병행 운영한다.

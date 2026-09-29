@@ -31,9 +31,12 @@ describe('D-07 M 번호가 꺼진 배포', () => {
 
     const context = (await h.get('/context', issued.access_token)).json<{ capabilities: string[]; operations: string[] }>();
     expect(context.capabilities).toEqual(['search:read', 'source:read']);
+    // 이 하네스는 source blame 게이트도 꺼진 기본 배포라(CR-135, D-26) `read.source.blame`도 빠진다 — 그 사실 자체는
+    // blame-disabled.test.ts가 CR-135 전의 목록과 대조한다.
     expect(context.operations).toEqual(
       INTEGRATION_OPERATIONS.filter(
-        (operation) => operation.id.startsWith('read.') && operation.id !== 'read.merge_numbers.resolve',
+        (operation) =>
+          operation.id.startsWith('read.') && operation.id !== 'read.merge_numbers.resolve' && operation.id !== 'read.source.blame',
       ).map((operation) => operation.id),
     );
   });
