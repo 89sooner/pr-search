@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.25 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.26 | 갱신일: 2026-09-29
 
 ## W-024 Regression 상태 (CR-109 / FR-REG-001)
 
@@ -141,6 +141,7 @@ CR-079 상태 우선순위: 기존 인증/outer epoch_stale 처리 → PR 대상
 | `ready` | 정상 | 요약 + 결과 + 패싯 + 이분 탐색 | - | FR-SEQ-002 |
 | `error_range_inverted` | from > to | 앵커 교환 제안 | 앵커 수정 | FR-SEQ-002 |
 | `error_range_too_large` | 5만 건 초과 | 예상 건수 표시와 축소 안내 | 앵커 조정 | FR-SEQ-002 |
+| `error_unsupported_condition` | URL의 `q`에 `kind:`·`-kind:`가 있음 (`INVALID_PARAMETER`, `kind_not_supported_in_range`, CR-130) | 오류 배너 「Range queries do not support the kind: filter. Remove kind: from the range query and search again.」 — 결과를 그리지 않는다. 조건을 지우고 조회하지 않는다 | URL에서 `kind:`를 뺀다 | FR-SEQ-002 AC-9 |
 | `error_space_mismatch` | 두 앵커의 시퀀스 공간 불일치 | 조회 버튼 비활성 + 즉시 사유 표시 | 브랜치 선택 | FR-SEQ-004 |
 | `error_anchor_not_on_branch` | 앵커가 first-parent 체인 밖 | 머지 커밋을 대체 앵커로 제안 | 앵커 교체 | FR-SEQ-003 |
 | `error_anchor_not_merged` | 미머지 PR 앵커 | 사유 표시 | 앵커 교체 | FR-SEQ-003 |

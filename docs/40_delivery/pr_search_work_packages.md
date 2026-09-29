@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.79 | 갱신일: 2026-09-29
+> 상태: review | 버전: v2.81 | 갱신일: 2026-09-29
+
+## WP-111 구간 조회의 `kind:` 거절 (CR-130)
+
+- 요구사항: `FR-SEQ-002` AC-9(보완), `OD-019`(열기만). 선행: WP-023(구간 조회), WP-110(공통 오류 처리 — 수정 전에는 이 500이 그 봉투로 나갔다).
+- 범위: (1) `apps/search-api/src/sequence/routes.ts` — `enter()` 뒤·조회 전의 `kind:`·`-kind:` 400 `INVALID_PARAMETER` 거절과 구간의 키 목록(`RANGE_QUERY_KEYS`). (2) `apps/web/components/RangesView.tsx` — 거절 사유를 알리는 영어 안내. (3) 시험 — `range.test.ts`(실제 PostgreSQL·ES 대역), `a11y/ranges.test.tsx`. (4) 문서 — SRS·매트릭스·API 계약·화면 상태·QA·RUNBOOK.
+- 제외: 유형으로 좁히는 구간 조회(`OD-019`), 문법 오류 응답의 `supported_keys`, 일반 검색의 `kind:`, Release 발행, 사내 적용.
+- 완료 기준: 대표 실패를 **수정 전 코드에서 먼저 재현한다** — `kind:` 네 모양이 500이고, 세션 없음 401·범위 밖 404·`kind:` 없는 구간 200은 원래대로다. 수정 뒤에는 `kind:` 네 모양이 400 `INVALID_PARAMETER` `kind_not_supported_in_range`이고 Elasticsearch 대역이 한 번도 불리지 않으며, 401·404의 순서와 정상 구간의 결과·요약·에폭·커서가 그대로다. 실제 web → API → 데이터로 구간 화면이 거절을 알리고 정상 구간을 그대로 보인다. 변이로 새 시험이 대상을 거는지 확인하고, Node 22 전 계층 게이트와 독립 리뷰를 통과한다.
+- 상태: in_progress — 브랜치 `fix/cr130-range-kind`. 검증은 원장 6.121장이다.
 
 ## WP-110 처리되지 않은 오류의 공통 처리 (CR-129)
 
@@ -8,7 +16,7 @@
 - 범위: (1) `apps/search-api/src/http/unhandled-errors.ts` — 공통 분류(`FST_` + 4xx만 클라이언트 오류, 오류 종류·허용 코드·호출 위치), 수명 주기 단계 훅, 진단 로그 한 줄과 기록 실패 격리, 공개 리스너 처리기와 없는 경로 처리기. (2) `server.ts` — `genReqId`·`requestIdHeader: false`, 경로보다 먼저 등록. (3) `auth/read-invocation.ts` — 세션 조회의 correlation ID는 `request.id`. (4) PIPE `routes.ts`·`audit.ts` — 같은 분류와 앞단 ID 규칙. (5) `packages/contracts` — `UNSUPPORTED_MEDIA_TYPE`. (6) web — `serviceFailureMessage`, 작업 공간 검색 결과 오류의 `Reference ID`. (7) PIPE 통합 하네스의 Elasticsearch 고장 주입과 공개 서버 로그 수집. (8) 문서·인계 — API 계약·백엔드·관측성·화면 상태·QA·CONTRACT_DIFF D-24·RUNBOOK 8장.
 - 제외: web 프록시의 헤더 덮어쓰기(DEV-790)와 502 무기록(DEV-791), 경로마다의 `randomUUID()` 정리, 요청 로그 구현, PIPE 로그 문구 확장, 그 밖의 화면 오류 문구, Release 발행, 사내 적용.
 - 완료 기준: 대표 실패를 **수정 전 코드에서 먼저 재현한다** — 조회 경로의 Elasticsearch 고장으로 공개 경로가 Fastify 기본 본문(질의 거절은 400)을 내고 `correlation_id`가 없으며, PIPE는 같은 거절을 `INVALID_REQUEST`로 답한다. 수정 뒤에는 처리하지 못한 예외가 500 `INTERNAL_ERROR`·고정 문구·UUID `correlation_id`이고, 같은 ID의 진단 로그가 경로 패턴·단계·오류 종류·코드·호출 위치를 담으며, 응답과 로그 어디에도 검색어·원인 문구·원격 주소가 없다. 이미 처리하던 응답(문법 400·401·503, 추천 계산 실패의 200)은 그대로다. 실제 web → search-api → 격리 데이터로 화면의 `Reference ID`와 로그의 ID가 같다. 변이로 새 시험이 대상을 거는지 확인하고, Node 22 전 계층 게이트와 독립 리뷰를 통과한다.
-- 상태: in_progress — 브랜치 `fix/cr129-unhandled-errors`. 검증은 원장 6.120장이다.
+- 상태: done — main `e581b52`(PR #253 squash 병합, 2026-09-29). 검증·병합 판정은 원장 6.120장이다.
 
 ## WP-109 0건 검색의 완화 후보와 `kind:` 재해석 (CR-128)
 
@@ -234,7 +242,8 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
-| WP-110 | 처리되지 않은 오류의 공통 처리 | 구현 결함 수정 (CR-129) | WP-013, WP-015, WP-097, WP-109 | in_progress — 브랜치 `fix/cr129-unhandled-errors`, 원장 6.120장 |
+| WP-111 | 구간 조회의 `kind:` 거절 | 구현 결함 수정 + 요구사항 보완 (CR-130) | WP-023, WP-110 | in_progress — 브랜치 `fix/cr130-range-kind`, 원장 6.121장 |
+| WP-110 | 처리되지 않은 오류의 공통 처리 | 구현 결함 수정 (CR-129) | WP-013, WP-015, WP-097, WP-109 | done — main `e581b52`(PR #253), 원장 6.120장 |
 | WP-109 | 0건 검색의 완화 후보와 `kind:` 재해석 | 구현 결함 수정 + 요구사항 보완 (CR-128) | WP-013, WP-016, WP-037, WP-097 | done — main `d602890`(PR #251), 원장 6.119장 |
 | WP-108 | 한국 시간 표시와 KST 달력 날짜 검색 | 요구사항 변경 (CR-127) | WP-011, WP-013, WP-015, WP-037, WP-038, WP-039, WP-087, WP-096 | done — main `2272f56`(PR #247), 원장 6.118장 |
 | WP-107 | 업그레이드 직후 옛 스택 관계의 전환기 보완 | 구현 결함 수정 (CR-126) | WP-029, WP-030, WP-104 | done — main `7684bd3`(PR #245), 원장 6.117장 |

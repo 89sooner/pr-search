@@ -1,5 +1,7 @@
 # PR Search API 계약
 
+> CR-130 / FR-SEQ-002 AC-9 (2026-09-29): 새 경로·새 오류 코드는 없다. API-SEQ-001의 `q`에 `kind:`·`-kind:`가 있으면 **신원·권한 확인 뒤, 구간 검사·조회 전에** 400 `INVALID_PARAMETER`(`detail`: `field: "q"`, `key: "kind"`, `reason: "kind_not_supported_in_range"`, `supported_keys`)다. 전에는 결과와 무관하게 500이었다(DEV-788). 구간의 `supported_keys`는 `mnum`·`pr_number`·`kind`를 뺀 목록이다(CR-106의 `range_key_not_supported_here` 거절도 같은 목록). API-SRCH-004의 `kind:`는 그대로다.
+>
 > CR-129 / 공통 오류 (2026-09-29): 새 경로는 없다. 오류 코드 `UNSUPPORTED_MEDIA_TYPE`(415) 하나를 6장에 더한다. **공개 API가 경로에서 처리하지 못한 예외**는 이제 6장의 오류 봉투다 — 500 `INTERNAL_ERROR`와 고정 문구, `correlation_id`. 전에는 Fastify 기본 본문(`statusCode`·`error`·`message`, 내부 문구 포함)이었고 `correlation_id`가 없었으며, Elasticsearch가 질의를 거절한 예외는 그 `statusCode`(400)로 나갔다(DEV-786). 본문을 읽지 못한 요청은 400 `INVALID_PARAMETER`·413 `PAYLOAD_TOO_LARGE`·415 `UNSUPPORTED_MEDIA_TYPE`, 없는 경로는 404 `NOT_FOUND` 봉투다. 경로가 이미 처리하던 오류 응답은 그대로다. PIPE 연동(API-INT-001~014)은 같은 분류를 쓴다 — 서버 오류가 `INVALID_REQUEST`(400)로 나가던 결함을 고쳐 `INTERNAL_ERROR`(500)다(DEV-789, CONTRACT_DIFF D-24).
 >
 > CR-128 / FR-SRCH-006 AC-3 (2026-09-28): 새 경로·새 오류 코드는 없다. API-SRCH-004(와 같은 실행을 쓰는 API-INT-006)의 0건 응답이 **완화 후보를 후보마다 본 조회와 같은 규칙으로 다시 해석해 센다** — `kind:`는 요청 경로의 원래 대상에서 다시 적용하고(유형 조건을 뺀 후보는 다른 유형도 센다), 남은 유형이 없는 후보는 조회하지 않는다. 전에는 `kind:`와 다른 필터를 함께 쓴 0건 질의가 후보를 만들다 500이었다(DEV-783). 0건 응답에 선택 키 `relaxation_hints_incomplete: true`(세지 못한 후보가 있을 때만)가 더해진다. 추천 계산의 실패는 본 조회의 200을 바꾸지 않는다. 모순된 `kind:`의 0건도 후보를 센다(전에는 계산하지 않은 `[]`).
@@ -60,7 +62,7 @@
 
 `/file`은256KiB·4,000라인·UTF8 한도다. 없는 path는 revision이 실제 존재할 때만 missing이다. PR 비교는 merge-base 기준이고, 조회 전후 head/base 이동을 검사한다. 페이지마다 반환 base/head가 바뀌면 클라이언트도 비교를 중단한다. 트리는 비재귀 요청으로 확장하며5000개 상한/상류절삭을 표시한다. `/history` 행의 `pull_request_numbers`는 `prs-commits.pull_request_numbers`(FR-SRCH-002와 같은 근거)를 페이지 단위로 배치 조회해 채운다 — 행마다 개별 조회하지 않는다(N+1 금지, CR-107). 배열(빈 배열 포함)은 확정, `null`은 아직 미확정이며, 조회 자체가 실패·미배선이면 응답에 `pull_requests_unavailable: true`를 싣고 커밋 목록은 그대로 반환한다. **그 배열이 무엇인지는 CR-116이 정정한다 — 계약의 모양은 그대로다.** 배열은 「언젠가 한 번 그 커밋을 포함했던 모든 PR」이 아니라 채택된 최신 관측에 근거한 **현재 유효한 연결**이며, PR이 rebase되어 원본 커밋 목록에서 빠진 커밋에서는 그 번호가 사라진다(같은 커밋의 다른 PR 연결과 실제 병합 근거는 남는다). 그래서 이 열의 값은 세 가지 다른 사실을 계속 가른다 — **빈 배열**은 「검증한 범위에서 이 커밋에 연결된 PR이 0개」라는 사실의 진술이고, **`null`**은 「아직 확정하지 못했다」이며, **`pull_requests_unavailable: true`**는 「조회 자체를 하지 못했다」다. 앞의 둘을 합치거나 빈 배열을 필드 부재로 바꾸면 이 구분이 사라진다. 연결의 제거는 그 PR의 커밋 목록이 원격의 전부임을 증명한 관측에만 허용되므로, 증명하지 못한 동안에는 옛 번호가 남아 있을 수 있고 그 사실은 응답이 아니라 운영 경로(RB-29)가 답한다. source 조회 감사는 entity.view의 source 식별자·경로·관측SHA·결과코드만 남긴다. `@prs/contracts/source.ts`가 DTO 정본이다.
 
-> 상태: review | 버전: v0.50 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.51 | 갱신일: 2026-09-29
 
 ## 1. 목적
 
@@ -1198,6 +1200,18 @@ ADR-010은 오프셋을 금지한다. 그러나 **W-001의 커서를 그대로 �
 
 - `seq_epoch`는 **선택**이며 인용이 딛고 선 에폭이다 (CR-027). 넣으면 서버가 현재 에폭과 대조하고, 다르면 구간을 실행하지 않은 채 `epoch_stale: true`로 답한다 — ADR-007의 "조용히 옮기지 않고 무효화한다"가 여기서 성립한다. 생략하면 현재 에폭으로 조회한다.
 - `q`는 구간을 좁히며 **목록과 요약 양쪽에 같이 적용된다** (CR-027, DEV-136). 둘이 다른 집합을 말하면 화면이 고장난 것으로 읽힌다.
+- **`q`의 `kind:`·`-kind:`는 지원하지 않는다** (CR-130, FR-SEQ-002 AC-9). 구간은 PR과 커밋을 정본 서수로 함께 보인다. 세션·접근 범위·시퀀스 공간을 확인한 뒤(401·404·503은 전과 같다), 에폭·구간 검사와 조회 전에 400이다. 조건을 지우거나 0건으로 답하지 않는다.
+
+```json
+{
+  "error": {
+    "code": "INVALID_PARAMETER",
+    "message": "구간 조회에서 지원하지 않는 조건입니다: 'kind'",
+    "detail": { "field": "q", "key": "kind", "reason": "kind_not_supported_in_range", "supported_keys": ["repo", "author", "..."] }
+  },
+  "correlation_id": "0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8"
+}
+```
 
 응답 200:
 

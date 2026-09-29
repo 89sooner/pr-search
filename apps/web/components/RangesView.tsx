@@ -106,6 +106,18 @@ export interface RangesViewProps {
   readonly authEnabled?: boolean;
 }
 
+/**
+ * A range request the server refused, in words the user can act on.
+ *
+ * CR-130: `kind:` narrows `/search` to pull requests or commits, but a merge-order range lists both from the
+ * canonical sequence and does not support it (FR-SEQ-002 AC-9). Say which condition to remove instead of a
+ * generic failure.
+ */
+function rangeFailureMessage(error: { readonly code?: string; readonly message?: string; readonly detail?: { readonly reason?: unknown } }): string {
+  if (error.detail?.reason === 'kind_not_supported_in_range') return 'Range queries do not support the kind: filter. Remove kind: from the range query and search again.';
+  return serviceMessage(error.message, error.code === 'RANGE_TOO_LARGE' ? 'This range is too large. Narrow the range and try again.' : 'Unable to load results.');
+}
+
 export function RangesView({ loginPath, roles = [], authEnabled = true }: RangesViewProps): ReactNode {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -242,7 +254,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
           return;
         }
         if (!response.ok) {
-          const error = (record['error'] ?? {}) as { code?: string; message?: string };
+          const error = (record['error'] ?? {}) as { code?: string; message?: string; detail?: { reason?: unknown } };
           const failure = toCursorFailure(error.code);
           if (failure !== null) {
             /*
@@ -261,7 +273,7 @@ export function RangesView({ loginPath, roles = [], authEnabled = true }: Ranges
           setOutcome({
             kind: 'server_error',
             code: error.code ?? 'UNKNOWN',
-            message: serviceMessage(error.message, error.code === 'RANGE_TOO_LARGE' ? 'This range is too large. Narrow the range and try again.' : 'Unable to load results.'),
+            message: rangeFailureMessage(error),
             correlationId: typeof record['correlation_id'] === 'string' ? record['correlation_id'] : null,
             status: response.status,
           });

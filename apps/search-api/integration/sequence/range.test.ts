@@ -521,6 +521,62 @@ describe('`q` 필터 (DEV-136)', () => {
   });
 });
 
+/*
+ * CR-130 / DEV-788. `kind:`·`-kind:`는 구간 조회(W-004)가 지원하지 않는 조건이다 (FR-SEQ-002 AC-9). 전에는
+ * `runRange`가 `q`의 AST를 `resolveSearchTarget` 없이 `buildQuery`에 넘겨 가드(`KindFilterNotAppliedError`)가
+ * 결과와 무관하게 처리되지 않은 500을 냈다. 조건을 몰래 지우거나 0건으로 위장하지 않고 **설명 있는 400**으로
+ * 거절한다. 신원·권한 확인은 전처럼 먼저다 — 세션 없는 요청은 401, 범위 밖 저장소는 404이고, 그 뒤에 조회 전
+ * 400이다. Elasticsearch는 부르지 않는다.
+ */
+describe('구간 질의의 `kind:` (FR-SEQ-002 AC-9, CR-130 / DEV-788)', () => {
+  it.each(['kind:commit', 'kind:pull_request author:kim', '-kind:commit', 'author:kim -kind:pull_request'])(
+    '%s는 구간 조회가 지원하지 않는 조건이라 조회 전에 400 INVALID_PARAMETER다',
+    async (q) => {
+      const { status, body } = await get(`from_seq=0&to_seq=6&q=${encodeURIComponent(q)}`);
+      expect(status, JSON.stringify(body)).toBe(400);
+      expect(lastSearches).toEqual([]);
+      expect(lastSingleSearches).toEqual([]);
+      expect(body.error?.code).toBe('INVALID_PARAMETER');
+      expect(body.error?.message).toContain('구간 조회에서 지원하지 않는 조건');
+      expect(body.error?.detail).toMatchObject({ field: 'q', key: 'kind', reason: 'kind_not_supported_in_range' });
+      const supported = body.error?.detail?.['supported_keys'] as string[] | undefined;
+      expect(supported).toContain('author');
+      expect(supported).not.toContain('kind');
+      expect(supported).not.toContain('mnum');
+      expect(supported).not.toContain('pr_number');
+      expect(body.correlation_id).toMatch(/^[0-9a-f-]{36}$/);
+    },
+  );
+
+  it('세션이 없으면 `kind:` 질의도 전처럼 401이다 — 신원 확인이 먼저다', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `${SEQUENCE_RANGE_PATH}?repository=acme%2Fpayments&base_branch=main&from_seq=0&to_seq=6&q=${encodeURIComponent('kind:commit')}`,
+    });
+    expect(response.statusCode).toBe(401);
+    expect(lastSearches).toEqual([]);
+  });
+
+  it('접근 범위 밖 저장소의 `kind:` 질의는 전처럼 404다 — 권한 확인이 먼저다', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `${SEQUENCE_RANGE_PATH}?repository=other%2Fsecret&base_branch=main&from_seq=0&to_seq=6&q=${encodeURIComponent('kind:commit')}`,
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${sessionId}` },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(lastSearches).toEqual([]);
+  });
+
+  it('`kind:`가 없는 구간 질의는 그대로다 — 반개구간·요약·다음 커서', async () => {
+    const { status, body } = await get(`from_seq=0&to_seq=6&q=${encodeURIComponent('author:kim')}`);
+    expect(status, JSON.stringify(body)).toBe(200);
+    expect(body.range).toEqual({ from_seq: 0, to_seq: 6, boundary: '(from, to]' });
+    expect(body.summary).toBeDefined();
+    expect(body).toHaveProperty('next_cursor');
+    expect(lastSearches.length).toBeGreaterThan(0);
+  });
+});
+
 describe('구간 검증 (AC-3, AC-4 / QA-W004-07·08)', () => {
   it('**역전은 `RANGE_INVERTED`이고 교환 제안을 준다** (QA-W004-07)', async () => {
     const { status, body } = await get('from_seq=5&to_seq=2');

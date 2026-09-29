@@ -1702,6 +1702,7 @@ PR 본문·커밋 메시지에 사내 GHE의 **전체 URL**로 적은 참조(`ht
 
 | 증상 | 확인 |
 | --- | --- |
+| 구간 화면(Ranges)이 「Range queries do not support the kind: filter」로 결과를 그리지 않는다 | 링크나 손으로 고친 URL의 `q`에 `kind:`가 있다(`CR-130`). 구간은 PR과 커밋을 정본 서수로 함께 보인다 — URL에서 `kind:`를 빼고 다시 Load한다. 유형으로 좁힌 구간은 지원하지 않는다(`OD-019`). 이 판 이전 빌드는 같은 URL이 500이었다 |
 | 화면이나 API 응답의 오류에 `Reference ID`(또는 본문 `correlation_id`)가 있다 | 그 값으로 `docker compose logs search-api`의 출력을 찾는다(`grep <ID>`). `http.unhandled_error` 줄의 `route`(경로 패턴)·`stage`(수명 주기 단계)·`error_kind`(`elasticsearch`·`postgres`·`redis`·`github`·`network`·`application`)·`error_code`·`frames`(호출 위치)가 원인을 가리킨다(`CR-129`). 로그에는 오류 문구와 검색어가 없다 — 무엇을 검색했는지는 사용자에게 묻거나, 조회가 끝난 검색이면 감사 기록을 같은 ID로 본다. `http.client_error`는 본문을 읽지 못한 요청이다. web 프록시의 헤더 `x-correlation-id`는 다른 값이다(`DEV-790`) — 본문이나 화면의 값을 쓴다 |
 | 업그레이드 뒤 화면의 시각이 9시간 달라 보인다 | 이 판부터 화면은 시각을 한국 시간(`… KST`)으로 그린다(`CR-127`). 저장된 값은 바뀌지 않았다 — 시각에 마우스를 올리면 원본 UTC가 보인다. API와 CSV·JSON 내보내기의 시각은 여전히 UTC다 |
 | 같은 날짜로 검색했는데 결과가 전과 다르다, 또는 질의 칩·날짜 필터에 `UTC`가 붙어 있다 | 시간대 없는 옛 날짜 조건(공유 URL·저장된 검색)은 UTC 하루로 그대로 실행된다(`CR-127`) — 칩의 `… UTC`, 작업 공간 날짜 필터의 `(UTC)`가 그 표시다. 한국 날짜로 찾으려면 날짜를 다시 고르거나 질의에 시간대를 붙인다(`merged:2026-09-27..2026-09-27@Asia/Seoul`). 저장된 검색은 자동으로 바뀌지 않으므로 새 조건으로 다시 저장한다 |

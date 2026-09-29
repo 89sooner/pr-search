@@ -398,6 +398,32 @@ describe('재채번·서버 오류 상태 (QA-W004-22, 상태 매트릭스)', ()
     expect(screen.getByTestId('range-results')).toBeInTheDocument();
   });
 
+  it('구간 질의의 kind:는 지원하지 않는 조건이라고 알린다 (CR-130 / DEV-788)', async () => {
+    stubFetch({
+      range: {
+        status: 400,
+        body: {
+          error: {
+            code: 'INVALID_PARAMETER',
+            message: "구간 조회에서 지원하지 않는 조건입니다: 'kind'",
+            detail: { field: 'q', key: 'kind', reason: 'kind_not_supported_in_range', supported_keys: ['author'] },
+          },
+          correlation_id: 'r',
+        },
+      },
+    });
+    view('repo=acme%2Fpayments&branch=main&from=seq%3A2&to=seq%3A5&q=kind%3Acommit');
+    await waitFor(() => {
+      expect(screen.getByTestId('range-query')).toBeEnabled();
+    });
+    await userEvent.click(screen.getByTestId('range-query'));
+    await waitFor(() => {
+      expect(screen.getByText(/Range queries do not support the kind: filter/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/INVALID_PARAMETER/)).toBeInTheDocument();
+    expect(screen.queryByText(/구간 조회에서 지원하지 않는/)).not.toBeInTheDocument();
+  });
+
   it('서버 RANGE_TOO_LARGE는 오류 배너로 온다 — 이중 방어의 서버 절반', async () => {
     stubFetch({
       range: {
