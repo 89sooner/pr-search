@@ -1,6 +1,6 @@
 # PR Search 화면 상태 매트릭스
 
-> 상태: review | 버전: v0.28 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.29 | 갱신일: 2026-09-29
 
 ## W-024 Regression 상태 (CR-109 / FR-REG-001)
 
@@ -18,6 +18,8 @@ fixture 상태 재현 선택은 실제 provider health 조회가 아니며 UI에
 > CR-097 / FR-SRC-001~004: source UI는 loading·empty·error/retry·부분 트리·다음 페이지·이동한 PR·누락 파일·binary·too_large·unsupported·비UTF8·비교 시간 초과·관련 PR 조회 불가를 구별한다. 리비전 없는 상태는 지속 loading으로 표시하지 않는다. 저장소/경로/리비전 변경 시 요청을 취소하고 이전 응답을 새 선택에 섞지 않는다. 크기·리비전 상한은 CR-132가 이어 읽기로 바꿨다(아래 주석).
 
 > CR-132 / FR-SRC-001~004: 크기·개수로 끝을 막지 않는다. **파일** — 창을 끝까지 이어 읽는 동안 「Loading file versions… 2.0 MB of 5.3 MB」(Time-lapse 보기는 「Loading revision…」)와 **Cancel**을 보이고, 취소하면 「The comparison was cancelled.」/「Loading was cancelled.」와 **Retry**다. 2,000행을 넘는 코드·Diff 표는 보이는 부분만 그린다(스크롤·찾기·변경 이동·줄 선택은 전체에 대해 동작). 100MB 초과는 「GitHub does not serve files larger than 100 MB through its API.」 **비교** — 계산 중 「Comparing lines…」와 Cancel. 정확한 정렬이 예산을 넘어 근사로 계속하면 캡션에 그 사실을 붙인다. 계산 실패·취소를 「No differences between these versions.」로 그리지 않고, 줄 끝만 다르면 「These versions differ only in the newline at the end of the file.」다. **변경 목록** — GitHub 목록이 3,000개에서 끝나면 「GitHub lists at most 3,000 changed files for one change, so this list may be incomplete.」와 **Load the complete list**, 누르면 트리 비교 목록(「Line counts and renames are not available here.」, 줄 수 「—」)을 「More files」로 끝까지. **디렉터리** — 「Show more entries (5,000 of 12,375)」, GHE가 자른 목록만 「GitHub returned a partial listing for this directory.」 **Time-lapse** — 「Load older revisions」(끝까지 읽으면 「All N revisions of this path are loaded.」), 분석 범위(Last 30/100/300, All loaded), 분석 중 「Analyzing revision k of N…」와 **Cancel analysis**(취소하면 앞 결과를 유지하고 알린다), 결과 캡션에 건너뛴 비텍스트 리비전의 해시·이유와 근사 쌍 수.
+
+> CR-133 / FR-SRC-001 AC-5: **트리 검색** — 입력 「Search files in this revision…」이 비면 트리 탐색이고, 입력이 멈추면 결과 목록이 트리 자리를 차지한다(트리는 숨긴 채 남아 검색을 지우면 그대로 돌아온다). 목록을 읽는 동안 「Listing files… N paths · M matches so far」와 **Cancel**, 취소하면 「Listing stopped after N paths · M matches so far, so the results may be incomplete.」와 **Continue listing**(마지막 경로 뒤부터), 실패는 오류 문구와 **Retry**(읽은 목록은 유지)다. **목록을 다 읽기 전·취소·실패에는 「No files in this revision match "…".」를 쓰지 않는다.** 다 읽으면 「N matches」(200개를 넘으면 「· showing the first 200, type more to narrow the list」) 또는 「No files in this revision match "…".」다. GitHub가 디렉터리 목록을 잘랐으면 「GitHub returned a partial listing for a directory, so some files may be missing.」가 붙는다. 결과 항목은 파일 이름(굵게)과 상위 경로이고 링크는 「link」, 선택된 경로는 강조한다. 새로 고침으로 revision이 바뀌면 목록을 버리고 다시 읽는다.
 
 > CR-107 / FR-SRC-002: History 행의 PR 연결은 확정(배열, 빈 배열 포함)·미확정(`null`)·조회 자체 불가(`pull_requests_unavailable`, 응답 단위)를 서로 다르게 표시한다. 미확정은 조회 불가와 다른 상태다 — 미확정은 아직 투영이 안 됐을 뿐 재조회하면 바뀔 수 있고, 조회 불가는 이번 요청에서 시도 자체가 실패했다는 뜻이다.
 

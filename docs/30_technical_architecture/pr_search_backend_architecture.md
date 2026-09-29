@@ -20,7 +20,9 @@
 
 > CR-132 / FR-SRC-001~004: 위 상한은 **새 파라미터를 보내지 않는 예전 호출**의 규칙으로만 남는다. 이어 읽기는 한 번에 읽는 양(파일 1 MiB 창·디렉터리 5,000개·트리 비교 1,000개)과 총량을 가른다 — 응답이 다음 위치(`next_offset`·`next_after`)를 주고 끝까지 잇는다. 보호는 총량이 아니라 한 요청에 건다: 요청 기한 120초(슬롯 대기 포함, `SOURCE_REQUEST_DEADLINE_MS`), 사용자 연결 끊김 → 한 `AbortSignal`로 스케줄러 대기·GitHub 호출·원시 본문 읽기까지 중단, 원시 읽기 별도 동시 상한 2(`RAW_READ_CONCURRENCY` — 공용 8슬롯을 원시 읽기가 다 차지하지 못한다), 원시 창 호출 기한 = `GHE_REQUEST_TIMEOUT_MS` + 받을 바이트 ÷ 1 MiB/s(`RAW_MIN_BYTES_PER_MS`), 한 창의 서버 메모리 1 MiB. GitHub는 바이트 범위를 주지 않으므로 `getRawWindow`는 앞에서부터 받아 offset 전을 버리고 창을 채우면 스트림을 끊는다. 서버는 본문을 캐시하지 않는다(NFR-005). 변경 목록의 대체 읽기 `walkTreeDiff`(`apps/search-api/src/source/tree-diff.ts`)는 두 트리를 비재귀 호출로 나란히 걸으며 같은 SHA의 하위 트리와 커서 앞의 하위 트리를 가져오지 않는다.
 
-> 상태: review | 버전: v0.22 | 갱신일: 2026-09-29
+> CR-133 / FR-SRC-001 AC-5: 위의 「비재귀 트리」는 트리 탐색의 규칙이다. 검색의 경로 목록(`sourcePaths`, API-SRC-005)은 루트 트리를 `recursive=1`로 한 번 읽고(`GitHubSourceReader.treeRecursive`, 호출 기한 `SOURCE_PATHS_RECURSIVE_TIMEOUT_MS` 45초 — 최대 7MB 응답), 잘렸거나 그 호출만 기한을 넘기거나 5xx면 `walkTreeDiff`(빈 기준 트리, `entries: true`)로 걷는다. 걷기 한 페이지는 경로 5,000개(`SOURCE_PATHS_WALK_PAGE`) 또는 디렉터리 호출 100번(`SOURCE_PATHS_WALK_TREE_CALLS` — `maxTreeCalls`, 잎을 낸 페이지만 멈춘다)에서 끝난다. 요청 기한·사용자 취소는 CR-132의 한 신호를 그대로 쓰고 걷기로 넘기지 않는다. 경로 목록은 서버에 캐시하지 않는다. 트리 비교(`listing=tree`)에는 호출 상한을 걸지 않았다(DEV-797).
+
+> 상태: review | 버전: v0.23 | 갱신일: 2026-09-29
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 

@@ -1,6 +1,6 @@
 # PR Search UI 컴포넌트 명세서
 
-> 상태: review | 버전: v0.31 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.32 | 갱신일: 2026-09-29
 
 CR-131 / W-001 / FR-SRCH-006 AC-3: Repository workspace의 결과 0건 영역(`EmptyState` 자리)에 `WorkspaceRelaxationHints`가 붙는다. 서버가 센 후보(`remove`, `would_yield`)를 「Remove <조건> · <would_yield> results」 버튼으로 보인다. 누르면 그 조건에 값을 보탠 곳(필터 입력, 파일 트리 선택 `path`·`path_kind`·`source_ref`, 자유 텍스트 안의 같은 키·연산자 조건, 날짜 범위와 `tz`, PR·M 번호 범위, SHA로 정한 서수 범위)만 지우고 첫 페이지부터 다시 검색한다. 화면이 스스로 붙인 `kind:`·`repo:`, My open/merged PRs 탭의 로그인 작성자·상태, 지우면 다른 조건까지 바뀌거나 지목이 깨지는 후보(서수·M 번호 범위가 남는 `base` 제거 등)는 버튼으로 보이지 않는다 — 화면은 적용한 URL 상태로 질의를 다시 조립해 「원래 조건에서 그 조건만 뺀 것」과 같을 때만 버튼을 만든다. 계산이 불완전하면(`relaxation_hints_incomplete`) 「Some filter suggestions could not be calculated.」(목록이 비었으면 「Filter suggestions could not be calculated for this search.」), 앞쪽 필터만 셌으면(`relaxation_hints_truncated`) 「Only the first filters of this search were checked for suggestions.」를 덧붙이고 0건 화면은 그대로 둔다. 필터 패널은 접힌 채다.
 
@@ -17,6 +17,8 @@ CR-109 / W-024 / FR-REG-001: `RegressionWorkbench`가 URL selection·표시 filt
 > CR-099 / WP-087: operator의 `/search?legacy=1`은 Legacy search로 명시해 보존한다. Repository workspace는 Base branch·facet Label Select, Radix Popover 월간 DatePicker 두 개를 제공한다. PR 표는 `#`(GHE PR 링크), `M number`(merge sequence 파생 표시), `Title`, `Author`, `Status`, `Merged at`, `Changes`, `Details` 순이다. 제목 열에 PR 번호를 중복하지 않으며 기본 정렬은 PR 번호 내림차순이다. 상태·M number 배지는 semantic tone 경계와 안쪽 강조를 사용한다.
 
 > CR-098 / WP-086: ReaderShell의 상단 Workspace 바로가기는 operator에게만 렌더링한다. 일반 사용자는 검색·분석 본문을 사용하되 운영/레거시 바로가기의 존재를 상단 메뉴에서 노출하지 않는다. LeftNavPanel의 “Follow the merge order” 설명은 제거하고 operator 전용 Advanced search·Repository workspace 링크는 보존한다. Merged after/before는 브라우저 로케일과 무관하게 `YYYY-MM-DD`를 placeholder로 표시하고 같은 패턴을 요구한다.
+
+> CR-133: SourceTree 안의 입력은 **고정 revision의 파일 경로 검색**이다(루트 이름 필터가 아니다). 목록 읽기는 `lib/source-paths.ts`의 `loadPaths`(`next_after`가 끝날 때까지, 취소·이어 읽기), 거르기는 `matchPaths`(대소문자 무시 부분 문자열, 파일 이름 우선, 200개까지)다. 결과 목록(`aria-label="Matching files"`)은 버튼 목록이고 상태 줄은 `role="status"`, 실패는 `role="alert"`다. 검색 중에도 트리는 `hidden`으로 남는다.
 
 > CR-097: SourceTree는 sidebar 하단의 lazy Git 트리이며 방향키·Enter·선택 경로 복원을 지원한다. SourceHistory는 선택 경로의 live Git 이력을 고정 SHA로 표시하며, 각 행에 연결 PR 번호를 표시·복사한다(CR-107, 연결 미확정·조회 불가를 구별). DiffModal은 파일목록·split/unified·문자열 검색·변경 구간 이동·전체화면/이동을 제공한다. TimeLapseModal은 Radix Slider·버전목록·코드·추론 라인 heatmap/history·관련 PR을 제공한다. Ctrl/⌘+D는 선택된 검색 행, T는 선택 파일의 분석 진입이다. 상위 모달 안에서는 workspace 단축키를 가로채지 않는다. 모든 모달은 Escape와 호출자 포커스 복귀를 유지한다.
 
