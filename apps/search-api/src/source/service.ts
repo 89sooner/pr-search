@@ -192,15 +192,18 @@ export async function sourceFileWindow(reader: GitHubSourceReader, ref: RepoRef,
     ({ bytes, eof } = await reader.blobWindow(ref, meta.sha, { offset, length: SOURCE_WINDOW_BYTES }, options));
   }
   if (offset > 0 && bytes.length > 0 && ((bytes[0] ?? 0) & 0xc0) === 0x80) throw new SourceRangeError('Offset must be a window boundary returned by the previous response.');
+  // 파일의 끝은 GitHub가 준 크기로 판정한다. 본문이 크기보다 먼저 끝났으면 잘린 파일을 완전한 것처럼 내지 않고 실패한다.
+  const end = offset + bytes.length >= meta.size;
+  if (eof && !end) throw new Error('Upstream blob ended before its declared size');
   let cut = bytes.length;
-  if (!eof) { const newline = bytes.lastIndexOf(0x0a); cut = newline >= 0 ? newline + 1 : utf8Boundary(bytes); }
+  if (!end) { const newline = bytes.lastIndexOf(0x0a); cut = newline >= 0 ? newline + 1 : utf8Boundary(bytes); }
   const chunk = bytes.subarray(0, cut);
   if (chunk.includes(0)) return { ...base, status: 'binary', reason: 'Binary files cannot be displayed as text.' };
   let text: string;
   // offset 0은 예전처럼 앞의 BOM을 뗀다. 파일 가운데의 U+FEFF는 원문이므로 남긴다.
   try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: offset > 0 }).decode(chunk); } catch { return { ...base, status: 'binary', reason: 'This file is not UTF-8 text.' }; }
   if (offset === 0 && text.startsWith(LFS_POINTER)) return { ...base, status: 'unsupported', reason: 'Git LFS objects are not downloaded for source preview.' };
-  return { ...base, status: 'text', text, next_offset: eof && cut === bytes.length ? null : offset + cut };
+  return { ...base, status: 'text', text, next_offset: end ? null : offset + cut };
 }
 export async function sourceComparison(reader: GitHubSourceReader, ref: RepoRef, input: { pr?: number; commit?: string; page: number; related?: 'all' }, options: SourceCallOptions = {}): Promise<SourceComparison> {
   let base: string | null; let head: string;

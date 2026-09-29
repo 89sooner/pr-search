@@ -133,6 +133,18 @@ describe('CR-132 FR-SRC-003 파일 본문의 창', () => {
     expect(methods.commit).toHaveBeenCalledWith(repo, SHA, {});
   });
 
+  it('FR-SRC-003 끝은 GitHub가 준 크기로 판정한다 — 전송이 끝이라고 해도 크기보다 적으면 잘린 파일을 내지 않고 실패한다', async () => {
+    const content = Buffer.from('line one\nline two\nline three\n');
+    const { methods, reader } = fileReader(content);
+    // 전송이 창 뒤를 버리고 끝이라고 잘못 알린 경우(창보다 작은 바이트 + eof).
+    methods.blobWindow.mockResolvedValueOnce({ bytes: new Uint8Array(content.subarray(0, 12)), eof: true });
+    await expect(sourceFileWindow(reader, repo, SHA, 'x', 0)).rejects.toThrow('ended before its declared size');
+    // 전송이 끝을 모른다고 해도(eof false) 받은 바이트가 크기에 닿으면 끝이다 — 마지막 줄을 잘라 다음 창을 만들지 않는다.
+    methods.blobWindow.mockResolvedValueOnce({ bytes: new Uint8Array(Buffer.from('tail without newline')), eof: false });
+    methods.contentObject.mockResolvedValueOnce({ type: 'file', size: 20, sha: BLOB, encoding: 'none', content: '' });
+    expect(await sourceFileWindow(reader, repo, SHA, 'x', 0)).toMatchObject({ status: 'text', text: 'tail without newline', next_offset: null });
+  });
+
   it('utf8Boundary는 완전한 문자로 끝나면 그대로, 문자 가운데면 그 문자 앞에서 자른다', () => {
     const bytes = Buffer.from('a가😀', 'utf8'); // 1 + 3 + 4
     expect(utf8Boundary(bytes)).toBe(bytes.length);

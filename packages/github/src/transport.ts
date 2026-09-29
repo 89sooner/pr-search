@@ -139,6 +139,8 @@ export class GitHubTransport {
       let skipped = 0;
       let filled = 0;
       let eof = false;
+      // 창을 채운 조각에 창 뒤의 바이트가 남았다 — 그 조각이 스트림의 마지막이어도 본문은 끝나지 않았다.
+      let remainder = false;
       try {
         while (filled < window.length) {
           const chunk = await read();
@@ -152,12 +154,16 @@ export class GitHubTransport {
           const take = Math.min(bytes.length, window.length - filled);
           collected.set(bytes.subarray(0, take), filled);
           filled += take;
+          if (take < bytes.length) remainder = true;
         }
-        if (!eof && filled === window.length) {
-          // 창을 채웠다. 본문이 여기서 딱 끝났는지 한 번 더 보고, 남았으면 받지 않고 끊는다.
-          const next = await read();
-          if (next.done) eof = true;
-          else await reader.cancel();
+        if (!eof) {
+          if (remainder) await reader.cancel();
+          else {
+            // 창이 조각 끝에서 딱 끝났다. 본문도 여기서 끝났는지 한 번 더 보고, 남았으면 받지 않고 끊는다.
+            const next = await read();
+            if (next.done) eof = true;
+            else await reader.cancel();
+          }
         }
       } catch (error) {
         await reader.cancel().catch(() => undefined);

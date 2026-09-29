@@ -81,6 +81,22 @@ describe('CR-132 FR-SRC-003 원시 창', () => {
     expect(beyond.eof).toBe(true);
   });
 
+  it('창을 채운 조각에 뒷부분이 남으면 그 조각이 마지막이어도 eof가 아니다 — 남은 바이트를 버리고 끝이라고 하지 않는다', async () => {
+    const make = (chunks: string[]) => (async () => new Response(chunkedBody(chunks.map(bytes), { pulled: 0, cancelled: false }), { status: 200 })) as unknown as typeof fetch;
+    // 한 조각에 본문 전체가 오고 창이 그 가운데에서 끝난다.
+    const single = await transport(make(['abcdef'])).getRawWindow(request, { offset: 0, length: 5 });
+    expect(new TextDecoder().decode(single.bytes)).toBe('abcde');
+    expect(single.eof).toBe(false);
+    // offset을 건너뛴 뒤의 마지막 조각에서도 같다.
+    const skipped = await transport(make(['ab', 'cdefgh'])).getRawWindow(request, { offset: 3, length: 2 });
+    expect(new TextDecoder().decode(skipped.bytes)).toBe('de');
+    expect(skipped.eof).toBe(false);
+    // 창이 조각 끝에서 딱 끝나고 뒤가 없으면 eof다.
+    const exact = await transport(make(['abc', 'de'])).getRawWindow(request, { offset: 1, length: 4 });
+    expect(new TextDecoder().decode(exact.bytes)).toBe('bcde');
+    expect(exact.eof).toBe(true);
+  });
+
   it('잘못된 창은 호출 전에 거절한다', async () => {
     const fetchImpl = (async () => { throw new Error('must not be called'); }) as unknown as typeof fetch;
     await expect(transport(fetchImpl).getRawWindow(request, { offset: -1, length: 1 })).rejects.toThrow(RangeError);
