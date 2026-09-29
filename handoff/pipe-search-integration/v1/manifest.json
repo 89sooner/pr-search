@@ -22,11 +22,11 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "0f60678ae865f71e118f1950e396c09348b6b9d6db6716ef6bba64b9e8967b0f",
+  "contract_checksum": "3b249508b0b2f593676b0b2e70349dbecf7f4ddf95cd6e87385bfb95ee5bdfe4",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "14ac7eb61a17f8ee9d5d1d58d47502cbbbd37bdbf5776cb7c6c33e98513c773d",
+      "sha256": "909e5015a04ddb597a5e187930b27f25a294d2f203566183233b5ed1d18b955e",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
@@ -241,7 +241,7 @@
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "66581e530cf4235fd03dca981e9d7f8a5ca368f614619dc105eef6a3251efe09",
+      "sha256": "2648ccc0fb12c79558f4f441f96e64064456b05e555ffa74b0ad44b57d8e9c78",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
     },
     {

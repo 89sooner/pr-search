@@ -213,7 +213,7 @@ pr-search 화면은 256KiB·4,000줄을 넘는 파일, 5,000개를 넘는 디렉
 
 operation map의 `query_keys`와 `limits`(`tree_page_entries`·`tree_listing_page`·`window_bytes`·`blob_bytes_max`·`request_deadline_ms` 추가, History의 `page_max` 삭제)가 바뀌었으므로 계약 checksum이 바뀝니다. `protocol_version`은 `PSI-1.0` 그대로입니다 — D-21~D-23과 같이 선택 입력과 선택 응답 키를 더한 변경이고, History는 거절하던 요청을 받아들이는 완화입니다.
 
-**PIPE에 필요한 조치.** 새 파라미터를 보내지 않으면 없습니다. 새 동작을 쓰려면 (1) `SourceTree`·`SourceFile`·`SourceComparison`·`SourceChange`를 엄격하게 검증하는 경우 새 키와 `null` 줄 수를 받도록 스키마를 갱신하고, (2) 창·페이지를 이어 읽을 때 앞 응답의 `revision`·`tree_sha`·`head`·`base`를 그대로 넘겨 다른 리비전과 섞이지 않게 하십시오. 합성 예시 `examples/read.source.file.200.window.json`·`read.source.tree.200.page.json`·`read.source.diff.200.tree-listing.json`을 더했습니다.
+**PIPE에 필요한 조치.** 새 파라미터를 보내지 않으면 응답은 전과 같습니다. 다만 예전 `read.source.diff`의 `truncated`로 목록의 완전성을 판단하고 있다면 주의하십시오 — GitHub는 변경 파일을 3,000개까지만 나열하고 그 페이지(30번째)에서 다음 링크를 주지 않으므로, 3,000개에서 잘린 목록도 `truncated: false`·`next_page: null`일 수 있습니다(DEV-793, 실제 GHES는 확인하지 못했습니다). 완전한 목록이 필요하면 30번째 페이지가 가득 찼는지(파일이 3,000개에 닿았는지)로 감지해 `listing=tree`로 이어 읽으십시오. 새 동작을 쓰려면 (1) `SourceTree`·`SourceFile`·`SourceComparison`·`SourceChange`를 엄격하게 검증하는 경우 새 키와 `null` 줄 수를 받도록 스키마를 갱신하고, (2) 창·페이지를 이어 읽을 때 앞 응답의 `revision`·`tree_sha`·`head`·`base`를 그대로 넘겨 다른 리비전과 섞이지 않게 하십시오. 합성 예시 `examples/read.source.file.200.window.json`·`read.source.tree.200.page.json`·`read.source.diff.200.tree-listing.json`을 더했습니다.
 
 ## 확인하지 못한 것
 
