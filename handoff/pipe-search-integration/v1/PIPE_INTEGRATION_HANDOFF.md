@@ -7,11 +7,11 @@
 | 순서 | 파일 | 내용 |
 |---|---|---|
 | 1 | 이 문서 | 상태, 경로, 자격, 요청·응답 규칙, 설정, 운영 입력 |
-| 2 | `pipe-integration-v1.openapi.yaml` | **정본 계약.** 경로 14개, 파라미터, 성공·오류 스키마 전부 |
+| 2 | `pipe-integration-v1.openapi.yaml` | **정본 계약.** 경로 15개, 파라미터, 성공·오류 스키마 전부 |
 | 3 | `operation-map.json` | **정본 계약.** operation ↔ 원본 조회, query key, 상한, 연동 오류 코드 |
-| 4 | `CONTRACT_DIFF.md` | 제안 계약 PSI-1.0과 다른 자리 20개(D-01~D-20)와 확인하지 못한 것 |
+| 4 | `CONTRACT_DIFF.md` | 제안 계약 PSI-1.0과 다른 자리·그 뒤의 변경 26개(D-01~D-26)와 확인하지 못한 것 |
 | 5 | `conformance/README.md`, `conformance/vectors.json` | assertion 서명기 대조용 벡터 22개와 시험 공개키(비밀키는 공개 저장소라 넣지 않음) |
-| 6 | `examples/README.md`, `examples/*.json` | wire 예시 24개(정상·미매핑·권한 없음·범위 장애·만료·회수·부분 결과) |
+| 6 | `examples/README.md`, `examples/*.json` | wire 예시 32개(정상·미매핑·권한 없음·범위 장애·만료·회수·부분 결과·blame 게이트·blame 미지원) |
 | 7 | `DEPLOYMENT_AND_ROLLBACK.md`, `deploy-examples/` | pr-search 쪽 배포·키 교체·긴급 회수·binding 운영·롤백 |
 | 8 | `TEST_RESULTS.md` | 실제로 실행한 명령과 수용 시험 ID별 결과, NOT_RUN |
 | 9 | `manifest.json` | 파일별 SHA-256과 계약 checksum |
@@ -53,10 +53,13 @@ OpenAPI·operation map과 이 문서가 어긋나면 **OpenAPI·operation map이
 | `read.source.history` | `GET /read/source/{repository}/history` | mTLS + grant | `GET /api/v1/source/…/history` | `SourceHistory` |
 | `read.source.diff` | `GET /read/source/{repository}/diff` | mTLS + grant | `GET /api/v1/source/…/diff` | `SourceComparison` |
 | `read.source.file` | `GET /read/source/{repository}/file` | mTLS + grant | `GET /api/v1/source/…/file` | `SourceFile` |
+| `read.source.blame` | `GET /read/source/{repository}/blame` | mTLS + grant | `GET /api/v1/source/…/blame` | `SourceBlame` (기능 게이트 — 아래) |
 
 조회(`read.*`)는 원본 `/api/v1/*`의 **실행 코드를 그대로** 부릅니다. 성공 본문과 원본 조회의 오류 본문은 원본과 같은 모양·상태입니다(예외 하나: CONTRACT_DIFF D-20). Stage 1 Search UI가 원본 DTO로 만든 어댑터를 그대로 쓸 수 있습니다.
 
 M 번호 기능이 꺼진 pr-search 배포에서는 `capabilities`에 `merge_number:read`가 없고 `/context`의 `operations`에서 `read.merge_numbers.resolve`가 빠지며, 그 경로를 부르면 원본처럼 404 `NOT_FOUND`(`detail.reason = feature_disabled`)입니다(D-07). 화면은 `capabilities`로 M 번호 기능의 표시를 정하십시오.
+
+source blame(`read.source.blame`, CR-135)도 같은 방식의 기능 게이트 뒤에 있습니다(D-26). pr-search의 `SOURCE_BLAME_ENABLED`는 **기본 꺼짐**이고, 꺼진 배포에서는 `capabilities`에 `source_blame:read`가 없고 `/context`의 `operations`에 `read.source.blame`이 없으며 — 곧 exchange·`/context`가 CR-135 전과 같습니다 — 그 경로를 부르면 원본 봉투의 404 `NOT_FOUND`(`detail.reason = feature_disabled`)이고 GHE를 부르지 않습니다. 화면은 `source_blame:read`가 있을 때만 blame을 보이십시오. blame은 GitHub GraphQL `Commit.blame`이 계산한 줄 구간별 귀속이며 본문이 없습니다 — 같은 `revision`의 `read.source.file`과 줄 번호로 조합합니다. 501 `SOURCE_BLAME_UNSUPPORTED`(이 GHES가 blame을 제공하지 않음, 재시도 무의미)·503 `SOURCE_PERMISSION_REQUIRED`·429 `SOURCE_RATE_LIMITED`(`Retry-After`)·502 `SOURCE_UNAVAILABLE`을 구분해 안내합니다.
 
 ## 3. 자격 — PIPE가 구현할 것
 
@@ -160,13 +163,13 @@ pr-search는 요청마다 자기 UUID를 만들어 응답 머리글 `X-Correlati
 
 ### 5.4 볼 수 있는 저장소가 없는 사용자 (D-01)
 
-발급은 성공합니다. 조회는 원본이 0개 저장소 사용자에게 답하던 그대로입니다: 검색·식별자 해석·PR/커밋 상세 **503 `PERMISSION_UNAVAILABLE`**(원본 봉투), 저장소 목록 **200 `items: []`**, source 4종·M 번호 **404 `NOT_FOUND`**. 이 503은 권한 장애와 구분되지 않으므로 자동 재시도 대상으로 쓰지 말고, 화면은 먼저 `/read/repositories`를 불러 빈 목록이면 "연결된 저장소가 없음"을 안내하십시오.
+발급은 성공합니다. 조회는 원본이 0개 저장소 사용자에게 답하던 그대로입니다: 검색·식별자 해석·PR/커밋 상세 **503 `PERMISSION_UNAVAILABLE`**(원본 봉투), 저장소 목록 **200 `items: []`**, source 5종(blame 포함)·M 번호 **404 `NOT_FOUND`**. 이 503은 권한 장애와 구분되지 않으므로 자동 재시도 대상으로 쓰지 말고, 화면은 먼저 `/read/repositories`를 불러 빈 목록이면 "연결된 저장소가 없음"을 안내하십시오.
 
 ## 6. 원본 조회의 세부 동작 — 바꾸지 않았으니 BFF가 알아야 한다
 
 원본 DTO를 코드에서 추출하며 확인한 것입니다. OpenAPI 스키마가 이 동작을 그대로 적고 있습니다.
 
-- source 성공 본문에는 `correlation_id`가 없고, source 오류 본문에는 `detail`이 없습니다. 429 `SOURCE_RATE_LIMITED`에는 GHE가 알려 준 경우 `Retry-After`(초)가 붙습니다 — 즉시 재시도하지 마십시오.
+- source 성공 본문에는 `correlation_id`가 없고, source 오류 본문에는 `detail`이 없습니다 — 예외는 blame이 꺼진 배포의 404(`detail.reason = feature_disabled`, D-26)입니다. 429 `SOURCE_RATE_LIMITED`에는 GHE가 알려 준 경우 `Retry-After`(초)가 붙습니다 — 즉시 재시도하지 마십시오.
 - 검색의 `facets`는 정확히 `true`일 때만 `facets`·`facets_omitted`·`facets_status` 세 키가 옵니다. `kind:` 조건이 서로 상쇄되면 ES를 부르지 않아 `facets=true`여도 세 키가 빠집니다.
 - 파라미터 관용도가 조회마다 다릅니다. 저장소 목록의 `limit`은 범위 밖이면 400이고, 검색 `size`·해석 `limit`은 조용히 기본값이나 상한으로 바꿉니다. 커서는 저장소 목록이 trim하지 않고 검색은 trim합니다. 검색 `seq_epoch`의 빈 값은 "없음"이 아니라 400입니다.
 - 식별자 해석: PR 번호로 읽히지 않는 순수 hex가 7자 미만이거나 **40자를 넘으면** 400 `SHA_PREFIX_TOO_SHORT`입니다. 해석이 둘인 입력(예: `1234567`)은 후보를 합친 뒤 잘라 `truncated`가 false일 수 있습니다.
@@ -207,6 +210,7 @@ PIPE가 pr-search 운영 담당에게 넘길 것: 환경별 `client_id`·`issuer
 | 검증된 identity binding(PIPE subject ↔ pr-search 사용자, GHE 숫자 ID) | pr-search 운영 | 미등록 — CLI `bindings import`(기본 dry-run) |
 | PIPE에 노출할 등록 저장소 ID 허용 목록 | 서비스 소유자 | 미정의 |
 | 사내 GHES에서 설치 토큰으로 `GET /users/{login}`이 되는지 | pr-search 운영 | 미확인 (D-12) |
+| 사내 GHES의 GraphQL `Commit.blame` 지원과 필요한 GitHub App 권한 — 확인 전에는 `SOURCE_BLAME_ENABLED`를 켜지 않는다 | pr-search 운영 | 미확인 (D-26, `DEPLOYMENT_AND_ROLLBACK.md` 2.1) |
 
 binding은 pr-search에 한 번 로그인해 사용자 행과 GHE 숫자 ID가 있는 사람만 연결할 수 있습니다. pr-search는 이 연동으로 사용자·역할을 새로 만들지 않습니다.
 

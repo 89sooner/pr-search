@@ -1,5 +1,5 @@
 /**
- * PIPE 연동이 여는 고정 operation 목록 (CR-112 / API-INT-001~014).
+ * PIPE 연동이 여는 고정 operation 목록 (CR-112 / API-INT-001~015 — 015는 CR-135).
  *
  * **이 목록 밖의 경로는 등록되지 않는다.** `/read/*`는 문서상의 묶음일 뿐 catch-all proxy가 아니며
  * (계약 3.2), 각 경로가 기존 조회 하나에 1:1로 대응한다. 라우트 등록·operation map·OpenAPI 대조
@@ -121,6 +121,19 @@ export const INTEGRATION_OPERATIONS: readonly IntegrationOperation[] = [
     queryKeys: ['path', 'revision', 'offset'],
     original: { apiId: 'API-SRC-003', method: 'GET', path: '/api/v1/source/:repository/file' },
   },
+  /*
+   * CR-135 (FR-SRC-005): 고정 revision의 파일 blame. 경로는 늘 등록된다 — 기능 게이트(`SOURCE_BLAME_ENABLED`)가 꺼진
+   * 배포에서는 원본처럼 404 `feature_disabled`이고, `/context.operations`와 능력 목록에서 함께 빠진다(routes.ts).
+   */
+  {
+    id: 'read.source.blame',
+    apiId: 'API-INT-015',
+    method: 'GET',
+    path: '/read/source/:repository/blame',
+    auth: 'mtls+grant',
+    queryKeys: ['path', 'revision'],
+    original: { apiId: 'API-SRC-006', method: 'GET', path: '/api/v1/source/:repository/blame' },
+  },
 ];
 
 export function operationById(id: string): IntegrationOperation {
@@ -132,3 +145,8 @@ export function operationById(id: string): IntegrationOperation {
 /** 이 연동이 부여하는 능력. 역할(`operator` 등)과 무관하다 — assertion은 역할을 싣지 않는다. */
 export const BASE_CAPABILITIES = ['search:read', 'source:read'] as const;
 export const MERGE_NUMBER_CAPABILITY = 'merge_number:read' as const;
+/**
+ * source blame (CR-135). `SOURCE_BLAME_ENABLED=true`인 배포에서만 광고한다 — 꺼진 배포의 exchange·`/context`는 CR-135
+ * 전과 한 글자도 다르지 않다(PSI-1.0 유지의 근거, CONTRACT_DIFF D-26). PIPE는 이 능력이 있을 때만 blame을 부른다.
+ */
+export const SOURCE_BLAME_CAPABILITY = 'source_blame:read' as const;

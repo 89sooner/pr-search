@@ -38,6 +38,25 @@ search-api 프로세스
 
 켰는데 무엇 하나라도 없거나 틀리면 search-api가 **기동하지 않습니다.** 세션 인증(GHE App 자격)·Elasticsearch·Redis가 없는 배포에서도 기동하지 않습니다. 운영(`NODE_ENV=production`)에서는 handoff의 적합성 시험 공개키가 설정되어 있으면 기동하지 않습니다.
 
+### 2.1 source blame (CR-135, 선택 — 기본 꺼짐)
+
+`read.source.blame`(CONTRACT_DIFF D-26)은 연동과 별개인 기능 게이트 뒤에 있습니다. 두 변수는 공개 경로(API-SRC-006)와 연동 경로에 함께 적용됩니다.
+
+| 변수 | 필수 | 뜻 |
+|---|---|---|
+| `SOURCE_BLAME_ENABLED` | – | `true`만 켭니다. 비었거나 `false`면 꺼짐(기본)이고, 그 배포는 PIPE에 `source_blame:read`·`read.source.blame`을 광고하지 않으며 blame 경로는 404 `feature_disabled`입니다(GHE 호출 없음). 다른 값은 기동 거부 |
+| `GHE_GRAPHQL_URL` | – | GitHub GraphQL 끝점. 비우면 REST 루트(`GHE_API_URL`, 없으면 `GHE_BASE_URL` + `/api/v3`)에서 도출합니다 — `/api/v3`로 끝나면 그 꼬리를 `/api/graphql`로 바꾸고(GHES: `https://<host>/api/graphql`), 아니면 `<REST 루트>/graphql`입니다. 명시한다면 http(s) URL이고 query·fragment가 없어야 하며, 어기면 기동 거부 |
+
+켜는 순서:
+
+1. 사내 GHES의 GraphQL에서 `Commit.blame`이 되는지, search-api의 GitHub App 설치 토큰이 대상 저장소에 필요한 권한(Contents read로 추정)을 갖는지, search-api 호스트에서 GraphQL 끝점에 닿는지 확인합니다. pr-search는 이것을 실제 GHES에서 확인하지 못했습니다(`TEST_RESULTS.md` 6장 NOT_RUN).
+2. 도출 주소가 사내 형상과 다르면(프록시 경로 등) `GHE_GRAPHQL_URL`을 명시합니다.
+3. PIPE가 `Capability`·`ReadOperationId`를 엄격한 enum으로 검증한다면 새 값을 받아들이는 PIPE 판이 **먼저** 배포되어 있어야 합니다.
+4. `SOURCE_BLAME_ENABLED=true`로 search-api를 재기동합니다.
+5. 시험 사용자의 exchange·`/context`에 `source_blame:read`·`read.source.blame`이 있는지, 알려진 파일·revision의 `/read/source/{repository}/blame`이 200이고 구간이 GHES 웹 화면의 blame과 같은지 봅니다. 501 `SOURCE_BLAME_UNSUPPORTED`면 이 GHES는 blame을 제공하지 않으므로 되돌립니다. 503 `SOURCE_PERMISSION_REQUIRED`면 App 권한을 먼저 고칩니다.
+
+되돌리기: `SOURCE_BLAME_ENABLED=false`(또는 빈 값)로 재기동합니다. 능력·조회 목록에서 blame이 빠지고 경로는 404 `feature_disabled`가 됩니다. 새 표·마이그레이션이 없어 지울 자료가 없습니다(조회 감사 기록은 남습니다). 재기동 전에 발급된 grant(최대 300초)의 능력 목록을 캐시한 PIPE는 그동안 blame을 불러 404 `feature_disabled`를 받을 수 있으므로 그 코드를 「기능 꺼짐」으로 처리하게 합니다. `GHE_GRAPHQL_URL`은 blame 말고는 쓰지 않으므로 남겨 둬도 됩니다.
+
 ## 3. client 정책 파일 (`pipe-search-integration-policy/v1`)
 
 예시는 `deploy-examples/pipe-integration-policy.example.json`입니다. 규칙은 다음과 같습니다.
@@ -130,6 +149,9 @@ docker compose run --rm --no-deps -T -v "$PWD/bindings.json:/tmp/bindings.json:r
 | source 파일 | 256KiB·4000줄, 초과 시 200 `status: too_large` | 원본과 같다 |
 | source 트리 | 5000 항목, 초과 시 `truncated: true` | 원본과 같다 |
 | source diff | 페이지 30까지 | 원본과 같다 |
+| source 한 요청의 기한 | 120초 → 502 `SOURCE_UNAVAILABLE` | 원본과 같다 (CR-132, `SOURCE_REQUEST_DEADLINE_MS`) |
+| source blame의 GitHub 호출 기한 | 30초 → 502 `SOURCE_UNAVAILABLE`, 재시도 없음 | 원본과 같다 (CR-135, `SOURCE_BLAME_TIMEOUT_MS`) |
+| source blame의 GraphQL 동시성 | 프로세스당 2 (REST 조회와 따로 센다) | `@prs/github` `GRAPHQL_CONCURRENCY` (CR-135) |
 | GHE 사용자 조회 동시성 | 프로세스당 8 | `boundedDirectory` |
 | 접근 범위 GHE 갱신 동시성 | 프로세스당 20 | 원본 `AccessScopeResolver` |
 

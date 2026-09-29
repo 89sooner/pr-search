@@ -1,0 +1,30 @@
+{
+  "operation": "read.source.blame",
+  "title": "GHES가 GraphQL blame을 제공하지 않음 — 501 SOURCE_BLAME_UNSUPPORTED (CR-135)",
+  "captured": false,
+  "note": "합성 예시다. 기능 게이트는 켜져 있지만 사내 GHES의 GraphQL 스키마에 Commit.blame이 없을 때다. 일시 장애(502 SOURCE_UNAVAILABLE)·GitHub App 권한 부족(503 SOURCE_PERMISSION_REQUIRED)·한도(429 SOURCE_RATE_LIMITED)가 아니며 다시 불러도 같다 — 재시도하지 말고 「이 GHES는 blame을 제공하지 않는다」를 안내한다. 원본 봉투(retryable 없음)이고 GitHub 오류 원문은 싣지 않는다. 같은 매핑을 통합 시험 apps/search-api/integration/source/source-blame.test.ts가 GHE 대역 GraphQL로, PIPE 경로의 스키마 적합성은 integration/integrations/pipe/openapi.test.ts가 확인한다. 실제 GHES의 오류 모양은 확인하지 않았다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/blame?path=src%2Fpay%2Fretry.ts&revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 501,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000031"
+    },
+    "body": {
+      "error": {
+        "code": "SOURCE_BLAME_UNSUPPORTED",
+        "message": "This GitHub Enterprise Server does not provide blame through its API."
+      },
+      "correlation_id": "00000000-0000-4000-8000-000000000031"
+    }
+  }
+}

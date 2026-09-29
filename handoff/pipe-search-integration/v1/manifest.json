@@ -22,26 +22,26 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "3b249508b0b2f593676b0b2e70349dbecf7f4ddf95cd6e87385bfb95ee5bdfe4",
+  "contract_checksum": "1e9b0203f7430a9153b67037474d83b47e467203141f67eb106fd5346ffbe86f",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "909e5015a04ddb597a5e187930b27f25a294d2f203566183233b5ed1d18b955e",
+      "sha256": "0c67045e74615084ea52173ca4a223d909397713bcbc21fcd237098fd330227f",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
       "path": "DEPLOYMENT_AND_ROLLBACK.md",
-      "sha256": "0fd43dea589d6d4160ab328fc4512e5b861dcf279fa0f4ac18fa5aeeb637083d",
+      "sha256": "54d8021f871cdc6eda5a16ab081dcdd1a0af72880b2f2ade3e4b821e4b504c39",
       "role": "guide — 배포·키 교체·회수·롤백"
     },
     {
       "path": "PIPE_INTEGRATION_HANDOFF.md",
-      "sha256": "69107402786b63db99e00fc5b1254c31f80b5e3c2bcf211b4e3abc210035b5c7",
+      "sha256": "2f17d44541b6083133e501f6693ced1311d179e7198f4a33b174acfa10e830a2",
       "role": "guide — 먼저 읽을 문서"
     },
     {
       "path": "TEST_RESULTS.md",
-      "sha256": "ebc6200f25a2bb6a9dfd7f810f2097f0327a26f42e666654c6b383770029f4f4",
+      "sha256": "e4e4edd4ad375dfaf3808dab97e43592ac9a61722125d345409dde8580212934",
       "role": "evidence — 실행한 명령과 수용 시험 결과"
     },
     {
@@ -86,7 +86,7 @@
     },
     {
       "path": "examples/README.md",
-      "sha256": "722ec7e63a8ca6a4bd0c1960d4027d58244fe471a9a375e91c8cb528e48ef2ca",
+      "sha256": "4592493980fbd75ed1f815a4ba4159d39d17c02215cd3541e03fde2a055b3c9f",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -190,6 +190,21 @@
       "role": "fixture — 합성 wire 예시"
     },
     {
+      "path": "examples/read.source.blame.200.json",
+      "sha256": "cf0022c01be394f98241ad454d6b6121c95aa19847b43397bc0d5be9a37e72aa",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.blame.404.feature_disabled.json",
+      "sha256": "43f44e3c02ae36dd86de6eee3da64b356fa389f192d09e53171e79af308fce60",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.blame.501.json",
+      "sha256": "ed85befac7834086d5a733783e77df5fd5565a00f7d0286c8386c5fafe453cf4",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
       "path": "examples/read.source.diff.200.json",
       "sha256": "4f4bc967d23e6d4090b4aa6255a2f5b092646f16cc0115ed2b31adae17150e3f",
       "role": "fixture — 합성 wire 예시"
@@ -236,12 +251,12 @@
     },
     {
       "path": "operation-map.json",
-      "sha256": "45467f9b536cc7a7363df13976f5224ed332e1c128ebdf1334dd4bea497c6bf1",
+      "sha256": "9f70cb45c7ccab69a14427455f600748346a4da4622baa9ed7ce4ae866179153",
       "role": "contract — operation ↔ 원본 조회·query key·상한·오류 코드 (정본)"
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "2648ccc0fb12c79558f4f441f96e64064456b05e555ffa74b0ad44b57d8e9c78",
+      "sha256": "1bac0596ce04515d71c9e9349c521092c342196f8b6ee6dc3457555fa8ad458f",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
     },
     {

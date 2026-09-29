@@ -114,7 +114,9 @@ describe('PSI-D03 명시되지 않은 method·경로', () => {
     ['GET', '/read'],
     ['GET', '/read/'],
     ['GET', '/read/search/extra'],
-    ['GET', '/read/source/acme%2Fpayments/blame'],
+    // CR-135: `…/blame`은 이제 등록된 경로다(게이트가 꺼지면 원본 봉투의 404 feature_disabled — blame-disabled.test.ts).
+    // 목록 밖 source 경로의 대표로 없는 이름을 쓴다.
+    ['GET', '/read/source/acme%2Fpayments/blame2'],
     // CR-133: Files & folders 검색의 경로 목록(API-SRC-005)은 세션 조회만이다 — PIPE 연동 목록(FR-INT-001) 밖이다.
     ['GET', '/read/source/acme%2Fpayments/paths'],
   ])('%s %s 는 404 — prefix proxy·HEAD fallback이 없다', async (method, path) => {

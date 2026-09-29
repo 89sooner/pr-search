@@ -1,0 +1,70 @@
+{
+  "operation": "read.source.blame",
+  "title": "특정 리비전 파일의 blame — 줄 구간별 귀속 커밋 (CR-135)",
+  "captured": false,
+  "note": "합성 예시다. SOURCE_BLAME_ENABLED=true인 배포에서만 이 조회가 capabilities(source_blame:read)와 /context의 operations에 나타난다. ranges는 GitHub GraphQL Commit.blame이 준 순서 그대로(시작 줄 오름차순, 겹치지 않음)이고 줄 번호는 1부터, end_line을 포함한다. 본문은 없다 — 같은 revision의 read.source.file로 읽어 줄 번호로 조합한다. 두 번째 구간의 author_login이 null인 것은 커밋 작성자 이메일과 맞는 GHE 계정이 없다는 뜻이다(pr-search는 이름으로 계정을 짐작하지 않는다). 같은 매핑은 통합 시험 apps/search-api/integration/source/source-blame.test.ts가 실제 전송과 GHE 대역 GraphQL로, PIPE 경로의 스키마 적합성은 integration/integrations/pipe/openapi.test.ts가 실제 mTLS로 확인한다. 실제 GHES에서는 확인하지 않았다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/blame?path=src%2Fpay%2Fretry.ts&revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000029"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "src/pay/retry.ts",
+      "provider": "github_graphql",
+      "ranges": [
+        {
+          "start_line": 1,
+          "end_line": 12,
+          "age": 10,
+          "commit": {
+            "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "message_headline": "결제 재시도 모듈 뼈대",
+            "author_name": "Alice",
+            "author_login": "alice-psi",
+            "authored_at": "2026-07-02T01:14:09Z",
+            "committed_at": "2026-07-02T01:20:31Z"
+          }
+        },
+        {
+          "start_line": 13,
+          "end_line": 15,
+          "age": 4,
+          "commit": {
+            "sha": "cccccccccccccccccccccccccccccccccccccccc",
+            "message_headline": "재시도 간격을 지수 백오프로",
+            "author_name": "Build Bot",
+            "author_login": null,
+            "authored_at": "2026-08-01T09:30:00Z",
+            "committed_at": "2026-08-01T09:30:00Z"
+          }
+        },
+        {
+          "start_line": 16,
+          "end_line": 40,
+          "age": 1,
+          "commit": {
+            "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "message_headline": "결제 재시도 구현",
+            "author_name": "Alice",
+            "author_login": "alice-psi",
+            "authored_at": "2026-08-19T04:00:00Z",
+            "committed_at": "2026-08-19T04:00:00Z"
+          }
+        }
+      ]
+    }
+  }
+}

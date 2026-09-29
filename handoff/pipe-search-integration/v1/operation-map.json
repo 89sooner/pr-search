@@ -321,6 +321,28 @@
         "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
       ],
       "original_error_schema": "SourceErrorResponse"
+    },
+    {
+      "id": "read.source.blame",
+      "api_id": "API-INT-015",
+      "openapi_operation_id": "readSourceBlame",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/source/{repository}/blame",
+      "auth": "mtls+grant",
+      "query_keys": ["path", "revision"],
+      "original": { "api_id": "API-SRC-006", "method": "GET", "path": "/api/v1/source/{repository}/blame" },
+      "scope": "SOURCE_BLAME_ENABLED가 꺼진 배포(기본)는 신원 확인 직후 404(detail.reason = feature_disabled) — 저장소 형식·가시성·파라미터를 보기 전이고 GHE를 부르지 않는다. 켜진 배포는 저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
+      "limits": {
+        "blame_call_timeout_ms": 30000,
+        "graphql_concurrency_max": 2,
+        "request_deadline_ms": 120000
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "SourceErrorResponse"
     }
   ]
 }

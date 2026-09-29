@@ -27,7 +27,7 @@
 | 사례 | 파일 |
 |---|---|
 | 정상 발급·문맥·회수 | `auth.exchange.200`, `context.200`, `auth.revoke.200`, `auth.revoke_context.200` |
-| 조회 10종의 정상 응답 | `read.*.200` (source 성공 본문에는 `correlation_id` 키가 없다) |
+| 조회 11종의 정상 응답 | `read.*.200` (source 성공 본문에는 `correlation_id` 키가 없다. `read.source.blame.200`은 합성 — blame이 켜진 배포에서만 쓸 수 있다) |
 | 미매핑 | `auth.exchange.403.identity-binding-required` |
 | 권한 없음(범위 밖 단건) | `read.pull_request.404.not-found` — 없는 것과 같은 404, 원본 봉투 |
 | 접근 범위 장애 | `read.repositories.503.permission-unavailable`(연동 봉투, `retryable: true`)와 `read.search.503.permission-unavailable`(원본 봉투, `retryable` 없음) — **같은 코드가 두 모양으로 온다** |
@@ -37,6 +37,8 @@
 | 채번 전 M 번호 | `read.merge_numbers.resolve.409.no-sequence` — 원본 봉투 |
 | source 부분 결과 | `read.source.tree.200.truncated`, `read.source.history.200.pull-requests-unavailable` (합성) |
 | 0건 검색의 완화 후보를 다 세지 못함 | `read.search.200.relaxation-incomplete` (합성, CR-128 — 빈 목록 + `relaxation_hints_incomplete: true`는 「제안 없음」이 아니다) |
+| blame이 꺼진 배포(기본) | `read.source.blame.404.feature_disabled` (합성, CR-135 — 원본 봉투, `detail.reason = feature_disabled`. 그 배포의 capabilities에 `source_blame:read`가 없다) |
+| GHES가 GraphQL blame을 제공하지 않음 | `read.source.blame.501` (합성, CR-135 — `SOURCE_BLAME_UNSUPPORTED`. 일시 장애·권한 부족·한도와 다르며 재시도해도 같다) |
 
 ## 읽는 법
 

@@ -1,5 +1,5 @@
 /**
- * PIPE 연동 계약 (CR-112 / API-INT-001~014) — handoff 산출물이 코드 정본과 같은가.
+ * PIPE 연동 계약 (CR-112 / API-INT-001~015) — handoff 산출물이 코드 정본과 같은가.
  *
  * `handoff/pipe-search-integration/v1/`의 OpenAPI·operation map·예시·manifest는 PIPE 담당 세션이 이 저장소를
  * 보지 않고 구현하는 근거다. 코드가 바뀌었는데 그 파일들이 그대로면 인수인계가 거짓이 된다 — 그 상태를
@@ -15,6 +15,7 @@ import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 import { MAX_PREFIX_CANDIDATES } from '@prs/es';
+import { GRAPHQL_CONCURRENCY, SOURCE_BLAME_TIMEOUT_MS } from '@prs/github';
 import { MAX_SOURCE_COMMITS } from '../../resolve/detail.js';
 import { DEFAULT_RESOLVE_LIMIT } from '../../resolve/service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '../../repositories/overview.js';
@@ -30,6 +31,7 @@ import {
   INTEGRATION_OPERATIONS,
   INTEGRATION_PREFIX,
   MERGE_NUMBER_CAPABILITY,
+  SOURCE_BLAME_CAPABILITY,
   type IntegrationOperation,
 } from './operations.js';
 import { INTEGRATION_BODY_LIMIT, INTEGRATION_REQUEST_TIMEOUT_MS } from './server.js';
@@ -223,7 +225,8 @@ describe('OpenAPI 문서', () => {
     const schemas = openapi.components.schemas;
     expect(openapi.info.version).toBe(PROTOCOL_VERSION);
     expect(schemas['ProtocolVersion']?.['const']).toBe(PROTOCOL_VERSION);
-    expect(schemas['Capability']?.['enum']).toEqual([...BASE_CAPABILITIES, MERGE_NUMBER_CAPABILITY]);
+    // 기능 게이트의 능력(M 번호·blame)도 enum에는 늘 있다 — 광고 여부는 배포 설정이 정한다(통합 시험이 켜짐·꺼짐을 본다).
+    expect(schemas['Capability']?.['enum']).toEqual([...BASE_CAPABILITIES, MERGE_NUMBER_CAPABILITY, SOURCE_BLAME_CAPABILITY]);
     expect(schemas['ReadOperationId']?.['enum']).toEqual(
       INTEGRATION_OPERATIONS.filter((operation) => operation.id.startsWith('read.')).map((operation) => operation.id),
     );
@@ -326,6 +329,9 @@ describe('operation-map.json이 코드와 같다', () => {
     window_bytes: SOURCE_WINDOW_BYTES,
     blob_bytes_max: GITHUB_BLOB_MAX_BYTES,
     request_deadline_ms: SOURCE_REQUEST_DEADLINE_MS,
+    // CR-135: blame의 GitHub GraphQL 호출 기한과 GraphQL 전용 동시 상한(프로세스당).
+    blame_call_timeout_ms: SOURCE_BLAME_TIMEOUT_MS,
+    graphql_concurrency_max: GRAPHQL_CONCURRENCY,
   };
   const OPERATION_LIMITS: Record<string, Record<string, number>> = {
     'read.repositories': { limit_default: DEFAULT_PAGE_SIZE, limit_max: MAX_PAGE_SIZE },

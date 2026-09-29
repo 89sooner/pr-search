@@ -19,7 +19,7 @@ PIPE 구현은 이 문서와 `pipe-integration-v1.openapi.yaml`을 함께 읽어
 | `/read/resolve` | 503 `PERMISSION_UNAVAILABLE` | 같다 |
 | `/read/pull-requests/…`, `/read/commits/…` | 503 `PERMISSION_UNAVAILABLE` | 같다 |
 | `/read/repositories` | 200, `items: []`, `next_cursor: null` | 저장소 목록은 행 단위로 거른다 |
-| `/read/source/…` 4종 | 404 `NOT_FOUND` | 저장소 가시성 판정이 먼저 거절한다 |
+| `/read/source/…` 5종(blame은 D-26) | 404 `NOT_FOUND` | 저장소 가시성 판정이 먼저 거절한다. blame이 꺼진 배포는 그보다 앞의 게이트가 404 `feature_disabled`로 답한다 |
 | `/read/merge-numbers/resolve` | 404 `NOT_FOUND` | 같다 |
 
 PIPE는 이 503을 **자동 재시도 대상으로 쓰면 안 됩니다.** 권한 서비스 장애와 "볼 수 있는 저장소가 없음"을 이 코드만으로는 구분할 수 없습니다. 화면은 먼저 `/read/repositories`를 부르고, 빈 목록이면 "연결된 저장소가 없음"을 안내하는 기존 Stage 1 흐름을 따르면 됩니다. 통합 시험 `parity.test.ts`의 「0개 저장소」 사례가 이 표 전체를 공개 경로와 대조합니다.
@@ -215,6 +215,46 @@ operation map의 `query_keys`와 `limits`(`tree_page_entries`·`tree_listing_pag
 
 **PIPE에 필요한 조치.** 새 파라미터를 보내지 않으면 응답은 전과 같습니다. 다만 예전 `read.source.diff`의 `truncated`로 목록의 완전성을 판단하고 있다면 주의하십시오 — GitHub는 변경 파일을 3,000개까지만 나열하고 그 페이지(30번째)에서 다음 링크를 주지 않으므로, 3,000개에서 잘린 목록도 `truncated: false`·`next_page: null`일 수 있습니다(DEV-793, 실제 GHES는 확인하지 못했습니다). 완전한 목록이 필요하면 30번째 페이지가 가득 찼는지(파일이 3,000개에 닿았는지)로 감지해 `listing=tree`로 이어 읽으십시오. 새 동작을 쓰려면 (1) `SourceTree`·`SourceFile`·`SourceComparison`·`SourceChange`를 엄격하게 검증하는 경우 새 키와 `null` 줄 수를 받도록 스키마를 갱신하고, (2) 창·페이지를 이어 읽을 때 앞 응답의 `revision`·`tree_sha`·`head`·`base`를 그대로 넘겨 다른 리비전과 섞이지 않게 하십시오. 합성 예시 `examples/read.source.file.200.window.json`·`read.source.tree.200.page.json`·`read.source.diff.200.tree-listing.json`을 더했습니다.
 
+## D-26 source blame `read.source.blame` — 기능 게이트 뒤의 가법 operation, PSI-1.0 유지 (CR-135, 2026-09-29)
+
+pr-search의 Time-lapse는 인접 리비전을 비교해 **추정한** 관측 라인 이력이라 blame이 아닙니다. CR-135부터 pr-search는 GitHub GraphQL `Commit.blame`을 **서버 소유 고정 query**로 묻는 원본 조회 `GET /api/v1/source/{repository}/blame`(API-SRC-006)을 두고, 연동은 같은 실행 함수를 부르는 `GET /read/source/{repository}/blame`(API-INT-015, operation `read.source.blame`)을 더했습니다(FR-INT-001 AC-5). 입력은 저장소·40자 커밋 SHA·파일 경로뿐입니다 — 임의 GraphQL 문서·endpoint·토큰을 받는 경로는 없습니다. Time-lapse와 Diff는 바뀌지 않았습니다.
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| 조회 operation | 10종 | `read.source.blame` 추가. query key는 `path`(필수, 비어 있지 않음)·`revision`(필수, 40자 hex) 둘뿐입니다. 줄 범위·페이지 인자는 없습니다 — GitHub의 `Blame.ranges`가 한 응답에 전부 옵니다 |
+| 성공 본문 | 없음 | `SourceBlame`: `{ repository, revision, path, provider: "github_graphql", ranges: [{ start_line, end_line, age, commit: { sha, message_headline, author_name, author_login, authored_at, committed_at } }] }`. 구간은 GitHub 순서 그대로(시작 줄 오름차순, 겹치지 않음)이고 줄 번호는 1부터, `end_line`을 포함합니다. `author_name`·`author_login`은 GitHub가 주지 않으면 `null`입니다(이름으로 계정을 짐작하지 않습니다). 이메일·본문 텍스트·`correlation_id` 키는 없습니다 |
+| `Capability` | `search:read`·`source:read`·`merge_number:read` | `source_blame:read` 추가 — `SOURCE_BLAME_ENABLED=true`인 배포에서만 광고합니다 |
+| `/context`의 `operations`(`ReadOperationId`) | 조회 10종(M 번호 게이트 반영) | 켜진 배포에서만 `read.source.blame`이 더해집니다 |
+| 원본 오류 코드(`ErrorCode`·`SourceErrorResponse`) | 61개 | `SOURCE_BLAME_UNSUPPORTED`(501) 추가 — 이 GHES의 GraphQL 스키마에 `Commit.blame`이 없습니다. 일시 장애·권한 부족이 아니며 다시 불러도 같습니다 |
+| `SourceErrorResponse.error.detail` | 401의 `LoginRequiredErrorDetail`만 | blame이 꺼진 배포의 404에 `FeatureDisabledErrorDetail`(`{ "reason": "feature_disabled" }`)이 더해집니다 |
+| operation map `limits` | – | `blame_call_timeout_ms` 30000(GitHub 호출 하나의 기한), `graphql_concurrency_max` 2(프로세스당 GraphQL 동시 상한 — REST 조회와 따로 셉니다), `request_deadline_ms` 120000(한 요청의 기한, D-25와 같음) |
+
+**기능 게이트.** `SOURCE_BLAME_ENABLED`는 기본 꺼짐입니다(`true`·`false`·빈 값만 받고 그 밖의 값은 기동 거부). 꺼진 배포에서는 exchange·`/context`의 `capabilities`와 `operations`가 CR-135 전과 같고, 경로는 등록된 채 grant 검사와 엄격한 query 검사(목록 밖·중복 key는 400 `INVALID_REQUEST`) 뒤, **저장소 형식·접근 범위·파라미터를 보기 전에** 원본 봉투의 404 `NOT_FOUND`(`detail.reason = feature_disabled`, 문구 `Blame is not enabled on this deployment.`)로 답합니다. GHE를 부르지 않습니다. M 번호(D-07)와 같은 방식입니다. 켜진 배포의 검사 순서는 다른 source 조회와 같습니다: grant → 저장소 형식(400) → 접근 범위(사용자 범위 ∩ client 허용 목록 — 범위 밖·미등록은 같은 404이고 GHE를 부르지 않음) → 파라미터(400) → GHE. 감사는 다른 source 조회처럼 `entity.view`(대상 `source:blame:<repo>`, 경로·revision만 — 구간·커밋 제목은 남기지 않음)이고 응답은 no-store입니다.
+
+**오류 매핑.** 모두 원본 봉투(`retryable` 없음)이며 GitHub 오류 원문은 응답·로그에 싣지 않습니다. `errors`가 있으면 `data`가 일부 있어도 성공으로 내지 않고, 실패했을 때 추정 결과를 blame인 것처럼 내지 않습니다.
+
+| GitHub의 응답 | pr-search 응답 | PIPE가 할 일(제안) |
+|---|---|---|
+| GraphQL 스키마에 `Commit.blame`이 없음(필드 검증 오류) | 501 `SOURCE_BLAME_UNSUPPORTED` | 재시도하지 않습니다. 「이 GitHub Enterprise Server는 blame을 제공하지 않는다」로 안내하고 운영자 확인 대상으로 남깁니다 |
+| 저장소·리비전·경로가 없음 | 404 `NOT_FOUND` | 같은 revision의 file 조회처럼 「없음」 |
+| 주 한도(200 + `RATE_LIMITED`)·부 한도(200/403 + 부 한도 문구)·429 | 429 `SOURCE_RATE_LIMITED` + `Retry-After`(초) | 자동 재시도하지 않고 `Retry-After` 뒤에 사용자가 다시 요청하게 합니다 |
+| 401·403(부 한도가 아님)·`FORBIDDEN` | 503 `SOURCE_PERMISSION_REQUIRED` | 일시 장애가 아닙니다. 운영자에게 GitHub App 권한 확인을 요청하게 안내합니다 |
+| 5xx·일부 결과(`errors`와 `data`가 함께)·모르는 모양·호출 기한 30초·요청 기한 120초 | 502 `SOURCE_UNAVAILABLE` | 일시 장애로 안내하고 짧은 backoff 뒤 사용자가 다시 시도하게 합니다 |
+
+**GraphQL 한도.** pr-search는 GraphQL 응답의 한도 헤더를 REST 토큰 상태에 넣지 않고, 프로세스 안에서 이후 호출을 막지도(격리) 않습니다 — 한도에 걸린 그 요청만 429와 `Retry-After`로 돌려주며 GitHub 호출을 재시도하지 않습니다. `Retry-After`를 지키는 것은 호출자의 몫입니다. blame은 프로세스당 동시 2개로 묶이므로 PIPE BFF의 source 동시성 제한(D-14)과 별도로 대기가 생길 수 있습니다.
+
+**PSI-1.0을 유지하는 근거 — API 계약 8장 안정성 규칙의 예외.** 8장은 연동 계약을 바꿀 때 `protocol_version`을 함께 올리라고 합니다. 이번에는 올리지 않았습니다. 새 operation은 가법적이고, **기본 배포(게이트 꺼짐)의 exchange·`/context`가 CR-135 전과 같아** PSI-1.0 client가 받는 응답이 바뀌지 않기 때문입니다. 이 사실은 통합 시험 `apps/search-api/integration/integrations/pipe/blame-disabled.test.ts`가 CR-135 전의 능력·조회 목록을 그대로 적어 두고 실제 mTLS 응답과 대조합니다(게이트가 꺼진 경로의 404 봉투와 GHE 호출 0회도 같은 시험이 봅니다). 게이트를 켠 배포는 두 목록에 새 값이 더해집니다 — PIPE가 `Capability`·`ReadOperationId`를 엄격한 enum으로 검증한다면 **켜기 전에** 이 값을 받아들이도록 갱신해야 합니다. OpenAPI와 operation map이 바뀌었으므로 계약 checksum은 바뀝니다.
+
+**PIPE에 필요한 조치.**
+
+1. `capabilities`에 `source_blame:read`가 있을 때만 blame을 부르고 화면에 보입니다. 없으면 blame 기능을 숨깁니다(불러도 404 `feature_disabled`입니다).
+2. blame 응답에는 본문이 없습니다. **같은 `revision`**으로 `read.source.file`을 읽어 줄 번호(1부터)로 구간과 조합합니다. `revision`은 브랜치 이름이 아니라 40자 SHA입니다 — 트리·이력 응답의 `revision`을 그대로 넘기십시오.
+3. 501·503·429·502를 구분해 안내합니다(위 표). 501은 다시 불러도 같고, 429는 `Retry-After`를 지킵니다.
+4. `SourceBlame`·`SourceBlameRange`·`SourceErrorResponse`·`Capability`·`ReadOperationId`를 엄격하게 검증한다면 새 스키마와 enum 값을 받아들이도록 갱신합니다.
+5. Time-lapse(추정)와 blame(GitHub가 계산한 귀속)을 섞어 보이지 않습니다. blame이 실패했을 때 추정 결과를 blame인 것처럼 대신 보이지 마십시오.
+
+합성 예시 `examples/read.source.blame.200.json`·`read.source.blame.404.feature_disabled.json`·`read.source.blame.501.json`을 더했습니다. **실제 GHES에서는 확인하지 못했습니다** — 사내 GHES 버전과 `Commit.blame` 지원, 필요한 GitHub App 권한(Contents read로 추정), 오류 본문의 실제 `type`·HTTP 상태, GraphQL 한도 설정, 큰 파일의 blame 지연은 GHE 대역으로만 검증했습니다(`TEST_RESULTS.md` 6장 NOT_RUN).
+
 ## 확인하지 못한 것
 
 | 항목 | 상태 | 이유 |
@@ -222,5 +262,7 @@ operation map의 `query_keys`와 `limits`(`tree_page_entries`·`tree_listing_pag
 | 사내 CA가 발급한 실제 client 인증서의 subjectAltName 형식 | 미확인 | 사내 PKI를 볼 수 없다. 설정은 URI·DNS SAN 정확 일치나 SHA-256 지문 고정을 모두 받는다 |
 | 사내 HAProxy가 L4 passthrough로 구성 가능한가 | 미확인 | 운영 구성을 볼 수 없다 (D-02) |
 | 사내 GHES에서 설치 토큰으로 `GET /users/{login}`이 되는가 | 미확인 | 실 GHE에 닿지 않았다. GitHub REST 문서상 공개 사용자 조회다 |
+| 사내 GHES의 GraphQL `Commit.blame` 지원과 필요한 GitHub App 권한 | 미확인 | 실제 GHES에 닿지 않았다. `SOURCE_BLAME_ENABLED`를 켜기 전에 운영자가 확인한다 (D-26) |
+| 사내 GHES GraphQL의 실제 오류 모양(`type`·HTTP 상태)·한도 설정·큰 파일의 blame 지연 | 미확인 | GHE 대역으로만 검증했다 (D-26) |
 | PIPE JWT의 로그인 문맥·만료 추출 | PIPE 담당 | pr-search가 볼 수 없다 |
 | 사내 표준 위임 서버(OIDC Token Exchange 등)의 존재 | 미확인 | 있으면 ADR로 비교한다. 한쪽 저장소만 protocol을 바꾸지 않는다 |
