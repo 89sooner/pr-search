@@ -1,6 +1,8 @@
 # PR Search 비동기 작업 및 이벤트
 
-> 상태: review | 버전: v0.23 | 갱신일: 2026-09-27
+> 상태: review | 버전: v0.24 | 갱신일: 2026-10-01
+
+CR-139 / DEV-810·811: 새 잡·새 이벤트·새 역할은 없다. JOB-MIR-002와 JOB-SEQ-004(M 번호 근거)가 부르는 미러 `readCommit`이 `git show` 대신 `git log -1 --no-patch --no-use-mailmap`으로 커밋 객체만 읽는다(3.1장 표). 전에는 추가와 삭제가 함께 있는 커밋·병합에서 이름 변경 감지가 blob을 요구해 지연 인출이 막힌 기본 설정에서 실패했고, 그때마다 API 폴백이 GHE REST를 불렀다 — 보강은 커밋마다 한 번, M 번호 근거는 미확정 커밋을 다시 볼 때마다였다.
 
 CR-126 / FR-REL-006 AC-6 (DEV-773): 새 잡·새 이벤트·새 역할은 없다. JOB-REL-004의 스택 판정 직전에 **이벤트 소비자**가 그 PR 하나의 옛 스택 간선을 가져오기와 같은 규칙으로 정본에 옮긴다(3장 스택 절). JOB-REL-006 재파생과 JOB-ING-006(prs-links)은 옮기지 않는다 — prs-links의 전환 전 검증은 그대로다.
 
@@ -117,17 +119,17 @@ WP-020이 커밋 **그래프**를 읽는 계층을 세웠지만, 그 결과를 `
 
 **입력은 커밋 SHA와 저장소다.** 커밋 문서는 투영(JOB-ING-003)이 PR 보강 결과에서 먼저 만들고, 이 잡은 그 위에 **부분 업데이트**만 얹는다. 문서를 새로 만들지 않는다 — 만들면 접근 범위 필드(`org_id`, `visibility`, `allowed_team_ids`)의 출처가 둘이 되어 어느 쪽이 맞는지 판정할 수 없다.
 
-**출처는 `selectCommitGraph`가 고른 경로다.** 미러가 있으면 `git cat-file`/`rev-list` 한 번으로 전부 읽고, `mirror_enabled`가 꺼진 저장소는 GitHub API `GET /repos/{o}/{r}/commits/{sha}`로 같은 값을 얻는다. 두 경로의 반환 형태를 이 잡이 맞춰서 하나로 쓴다.
+**출처는 `selectCommitGraph`가 고른 경로다.** 미러가 있으면 커밋 객체를 `git log -1` 한 번으로 읽고(CR-139 — `git show`는 diff를 계산해 blob을 요구한다), `mirror_enabled`가 꺼진 저장소는 GitHub API `GET /repos/{o}/{r}/commits/{sha}`로 같은 값을 얻는다. 두 경로의 반환 형태를 이 잡이 맞춰서 하나로 쓴다.
 
 **모르는 것은 비워 두지 않고 사유를 적는다.**
 
 | 필드 | 미러 경로 | API 폴백 경로 |
 | --- | --- | --- |
-| `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at` | `git cat-file commit` | 커밋 API 응답 |
+| `parent_shas`, `message`, `author`, `committer`, `authored_at`, `committed_at` | `git log -1 --no-patch --no-use-mailmap --format=…` — **커밋 객체만 읽는다.** diff를 계산하지 않으므로 blob이 필요 없다 (CR-139, DEV-810) | 커밋 API 응답 |
 | `changed_paths` | `git diff-tree --no-commit-id --name-only -r` — **파일 이름만 읽고 내용은 읽지 않는다.** blob이 필요 없으므로 지연 인출을 켜지 않아도 된다 | 커밋 API의 `files[].filename` (상한 300건, 초과 시 `changed_paths_truncated: true`) |
 | `patch_id` | `MIRROR_ALLOW_BLOB_FETCH=true`인 저장소에서만. 아니면 필드를 **두지 않고** `patch_id_unavailable: blob_fetch_disabled` | 계산 불가. `patch_id_unavailable: no_mirror` |
 
-`changed_paths`가 blob 없이 얻어진다는 점이 중요하다 — `git diff-tree --name-only`는 트리만 비교하므로 THR-015의 완화(“blob이 볼륨에 없음”)를 깨지 않는다. **patch-id만 blob을 요구한다.**
+`changed_paths`가 blob 없이 얻어진다는 점이 중요하다 — `git diff-tree --name-only`는 트리만 비교하므로 THR-015의 완화(“blob이 볼륨에 없음”)를 깨지 않는다. **patch-id만 blob을 요구한다.** 메타데이터도 그렇다 — CR-139 전에는 `git show`가 이름 변경 감지 때문에 추가와 삭제가 함께 있는 커밋에서 blob을 요구해, 지연 인출이 막힌 기본 설정에서는 실패해 API로 폴백했고 허용된 설정에서는 blob을 볼륨에 남겼다.
 
 **멱등이다.** 같은 SHA로 다시 돌려도 같은 값을 쓰며, `document_version`은 건드리지 않는다 — 이 값들은 웹훅이 나르는 엔티티 상태가 아니라 Git 히스토리에서 읽은 **불변 사실**이므로 버전 경쟁의 대상이 아니다. 단 `patch_id`만은 `MIRROR_ALLOW_BLOB_FETCH`를 켠 뒤 재실행하면 `null`에서 값으로 바뀔 수 있다.
 

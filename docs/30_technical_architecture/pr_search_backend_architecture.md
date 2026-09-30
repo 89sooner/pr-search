@@ -1,5 +1,7 @@
 # PR Search 백엔드 아키텍처
 
+> CR-139 / DEV-810·811: 미러의 커밋 메타데이터 읽기(`packages/github/src/mirror-graph.ts`의 `readCommit`)는 `git log -1 --no-patch --no-use-mailmap --format=…`이다 — 커밋 객체만 읽고 diff도 메일맵도 계산하지 않는다. 전에 쓰던 `git show --no-patch`는 diff 출력만 끄고 계산은 해서, 추가와 삭제가 함께 있는 커밋·병합에서 이름 변경 감지가 blob을 요구했다. 운영 기본(`GIT_NO_LAZY_FETCH=1`)에서 그것은 원격 요청 없는 실패 → `null` → `FallbackCommitGraph`의 API 폴백이 되어, 로컬에 있는 커밋을 읽으려고 GHE REST 예산을 썼다. `firstParentCommits`도 bare 미러의 `HEAD:.mailmap` blob을 읽지 않게 `--no-use-mailmap`을 붙였다. 미러에 없는 커밋은 여전히 `null`이고 폴백이 답한다. 미러 명령 가운데 blob을 요구하는 것은 다시 `patchId`(`diff-tree -p`) 하나다.
+>
 > CR-129 / DEV-786: 8장 「예상치 못한 예외」 행을 공개 리스너가 처음으로 지킨다. `apps/search-api/src/http/unhandled-errors.ts`가 공통 분류(`FST_` 코드 + 4xx만 클라이언트 오류, 오류 종류와 허용 코드, 호출 위치), 수명 주기 단계 훅, 진단 로그 한 줄을 갖고, `buildServer`가 경로보다 먼저 등록한다. correlation ID는 `request.id`(서버가 만든 UUID)다. PIPE 리스너는 같은 분류를 쓰고 봉투·인증은 그대로다.
 >
 > CR-127 / FR-SRCH-005 AC-11·FR-STAT-002 AC-7·FR-AUTH-004 AC-9: `packages/query/src/calendar.ts`가 시간대 검증·정규화, 그 지역 날짜의 첫 순간, 날짜 더하기를 갖는다. 파서는 `merged`·`created`의 날짜 범위 끝 `@<시간대>`를 AST `timezone`으로 싣고 `packages/es/src/query-builder.ts`의 `rangeClause`가 `{gte, lt}` UTC 순간으로 옮긴다(시간대 없는 범위는 그대로 `gte`/`lte`). `apps/search-api/src/analytics/routes.ts`는 날짜만 적은 시계열 기간을 그 문법으로 모집단에 더하고 `extended_bounds`·기본 기간·`timezone` 검증을 같은 모듈로 한다. `apps/search-api/src/audit/routes.ts`의 기간 해석은 오프셋 없는 값을 UTC로 읽는다(서버 기본 시간대에 기대지 않는다). 아래 「달력 날짜 범위의 계층 경계」 문단이 정본이다.
@@ -26,7 +28,7 @@
 
 > CR-137 / FR-INT-001: PIPE `read.source.paths`(API-INT-016)는 `executeSource`의 `paths`(API-SRC-005, CR-133)를 그대로 실행한다 — `INTEGRATION_OPERATIONS`에 항목 하나, 연동 route의 source 표에 줄 하나다. 게이트가 없어 `/context`의 조회 목록에 늘 있고(M 번호·blame 필터에 해당하지 않는다), 연동 계층의 엄격한 query 검사가 `revision`·`after` 밖의 key를 원본보다 먼저 400으로 거절한다.
 
-> 상태: review | 버전: v0.25 | 갱신일: 2026-10-01
+> 상태: review | 버전: v0.26 | 갱신일: 2026-10-01
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 

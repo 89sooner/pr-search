@@ -17,6 +17,12 @@
  * `GIT_NO_LAZY_FETCH=1`이 기본이다. 그래프 연산(`rev-list`·`merge-base`·
  * `rev-parse`)은 blob이 전혀 필요 없으므로 이 설정에서 온전히 동작한다.
  * 영향을 받는 것은 `patchId` 하나뿐이고, 그것은 사유를 붙여 `null`을 돌려준다.
+ *
+ * **메타데이터 명령이 blob을 요구하지 않게 고르는 것은 이 파일의 몫이다** (CR-139,
+ * DEV-810·811). 지연 인출 차단은 blob 읽기를 원격 요청 없이 실패시킬 뿐, 읽으려는
+ * 시도 자체를 없애지 않는다. `git show`처럼 diff를 계산하는 명령은 차단된 설정에서
+ * 실패하고(메일맵 읽기는 stderr에 오류 한 줄만 남긴다), 허용된 설정에서는 둘 다
+ * promisor 원격에서 blob을 받아 볼륨에 남긴다 — 실측은 원장 6장 CR-139 절.
  */
 
 import { execFile } from 'node:child_process';
@@ -254,12 +260,18 @@ export class MirrorCommitGraph implements CommitGraph {
    *
    * **커밋 객체만 읽으므로 blob이 필요 없다** — blobless 미러에서 그대로
    * 동작하고 THR-015의 완화 근거를 깨지 않는다.
+   *
+   * **`--no-use-mailmap`이 그 전제를 지킨다** (CR-139, DEV-811). `log.mailmap`이 기본으로
+   * 켜져 있고 bare 저장소의 `mailmap.blob` 기본값이 `HEAD:.mailmap`이라, 기본 브랜치에
+   * `.mailmap`이 있는 저장소에서는 `git log`가 시작하면서 그 blob을 읽으려 한다. 이 형식은
+   * 이름을 싣지 않으므로 끄는 것이 값을 바꾸지 않는다.
    */
   async firstParentCommits(ref: RepoRef, range: RevRange): Promise<readonly FirstParentCommit[]> {
     const stdout = await this.#expect(ref, [
       'log',
       '--first-parent',
       '--reverse',
+      '--no-use-mailmap',
       '--format=%H %cI',
       revRangeArg(range),
       '--',
@@ -341,8 +353,18 @@ export class MirrorCommitGraph implements CommitGraph {
   /**
    * 커밋 객체 하나를 읽는다 (WP-067 / CR-038).
    *
-   * **커밋 객체만 읽으므로 blob이 필요 없다** — `firstParentCommits`와 같은 이유로
-   * blobless 미러에서 그대로 동작한다.
+   * **커밋 객체만 읽는다 — blob도 원격도 부르지 않는다** (CR-139, DEV-810). 그래서
+   * 명령이 `git show`가 아니라 `git log -1`이다. `git show`는 `--no-patch`를 주어도 diff
+   * **출력**만 끄고 **계산**은 한다. 그 계산의 이름 변경 감지(`diff.renames` 기본 켜짐)와
+   * 병합의 결합 diff는 추가와 삭제가 함께 있는 커밋에서 blob 내용을 요구하고, blobless
+   * 미러에는 그 blob이 없다 — 지연 인출이 막힌 운영 기본에서는 원격 요청 없이 실패해
+   * `null`이 되고 폴백이 API를 불렀으며, 허용된 설정에서는 promisor 원격에서 blob을 받아
+   * 볼륨에 남겼다. `git log`는 diff를 요청받지 않으면 계산하지 않고, `-1`은 요청한 커밋
+   * 하나에서 멈춘다. `--no-patch`는 그 의도를 적어 둔다.
+   *
+   * `--no-use-mailmap`은 기본 브랜치의 `.mailmap` blob을 읽지 않게 한다 (DEV-811,
+   * `firstParentCommits`와 같은 이유). `%an`·`%ae`·`%cn`·`%ce`는 메일맵을 적용하지 않은
+   * 원래 값이므로 끄는 것이 값을 바꾸지 않는다.
    *
    * 구분자는 NUL이다. 커밋 메시지에는 개행·파이프가 자유롭게 오므로 눈에 보이는
    * 문자를 구분자로 쓰면 그런 메시지 하나가 그 줄 전체를 오독하게 만든다.
@@ -354,13 +376,19 @@ export class MirrorCommitGraph implements CommitGraph {
   async readCommit(ref: RepoRef, sha: string): Promise<CommitMetadata | null> {
     assertSha(sha);
     const result = await this.#git(ref, [
-      'show',
+      'log',
+      '-1',
       '--no-patch',
+      '--no-use-mailmap',
       '--format=%H%x00%P%x00%an%x00%ae%x00%cn%x00%ce%x00%aI%x00%cI%x00%B',
       sha,
       '--',
     ]);
-    // 커밋이 아직 미러에 없다. 오류가 아니라 "다음 회차에 다시 본다"이다.
+    /*
+     * 커밋이 아직 미러에 없다(`bad object`). 오류가 아니라 "다음 회차에 다시 본다"이다.
+     * 이때 원격을 부르지 않는 것은 명령이 아니라 지연 인출 차단(`GIT_NO_LAZY_FETCH=1`)
+     * 덕분이다 — 허용된 설정에서는 git이 없는 커밋을 promisor 원격에서 받아 온다.
+     */
     if (result.code !== 0 || result.stdout.trim() === '') return null;
 
     const parts = result.stdout.split('\u0000');
@@ -371,6 +399,14 @@ export class MirrorCommitGraph implements CommitGraph {
       parents === undefined || authoredAt === undefined || committedAt === undefined
     ) {
       throw new CommitGraphError('mirror', `커밋 줄을 해석할 수 없다: ${sha}`);
+    }
+    /*
+     * `log`는 주석 태그를 그것이 가리키는 커밋으로 벗겨 답한다. 요청한 객체가 커밋이
+     * 아니었다면 다른 커밋의 값을 이 SHA의 값으로 싣지 않는다 — 옛 `show`도 그 경우
+     * 태그 머리글 때문에 해석에 실패해 던졌다.
+     */
+    if (full !== sha) {
+      throw new CommitGraphError('mirror', `요청한 SHA가 커밋이 아니다: ${sha}`);
     }
 
     return {
