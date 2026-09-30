@@ -2722,7 +2722,8 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 ## 23차 뒤 남은 것 (2026-09-30)
 
 - [x] **A~E와 CR-134** — PR #253~#260을 main `0d14990`까지 병합했다(PR마다 PR CI와 병합 커밋 main CI 확인, C의 병합 커밋 main CI만 빨갰고 CR-134로 복구). 원장 6.120~6.127장.
-- [ ] **새 배포본과 사내 적용(사용자)** — A~E를 담은 배포본은 사내 운영 판 pilot.20 상태에서 격리 업그레이드 리허설로 검증한다. 적용 뒤 `agent-context/upstream-feedback.md` CR-128 항목의 재조회 목록과 23차 반영 주석의 확인 항목을 조회해 적는다.
+- [x] **새 배포본 0.1.0-pilot.21 발행**(2026-09-30) — 사내 운영 판 pilot.20 상태에서의 격리 업그레이드 리허설을 통과한 뒤 발행했다(원장 머리 절 「0.1.0-pilot.21 발행」).
+- [ ] **사내 적용(사용자)** — [pilot.21 절차서](../docs/40_delivery/pr-search-pilot21-import-procedure.md)를 따른다. 적용 뒤 `agent-context/upstream-feedback.md` CR-128 항목의 재조회 목록과 23차 반영 주석의 확인 항목을 조회해 적는다.
 - [ ] **blame 켜기(사용자)** — 사내 GHES의 버전·`Commit.blame` 지원·App 권한을 확인한 뒤 `SOURCE_BLAME_ENABLED=true`(RUNBOOK 7.L). 켜기 전에는 PIPE에 blame 능력이 광고되지 않는다.
 - [ ] **CR-136 권고 채택(사용자)** — 검토서 6.4절의 승인 대기 항목: 채택 여부, 선택 코드 항목(인증서 만료 지표, 재기동 없는 인증서 재적재, `prsctl`의 PIPE 하위 명령), PIPE 쪽 변경, 2-B·3-A 재개 조건, RUNBOOK 편입과 `purge` 정기 작업.
 - [ ] **DEV-797(open)** — 트리 비교 목록(`/diff?listing=tree`)의 한 페이지가 읽는 디렉터리 수에 상한이 없다. `/paths`의 걷기와 같은 상한을 거는 후속 후보.
