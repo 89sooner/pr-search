@@ -8,9 +8,11 @@
 
 > CR-135 보완 (2026-09-29, pr-search): 이 제안 계약의 source 조회 4종에 **선택 기능 source blame**이 더해졌다 — PIPE 경로 `GET /source/{repository}/blame`, pr-search 경로 `GET /read/source/{repository}/blame`(operation `read.source.blame`, 입력 `path`·`revision`). pr-search가 기능을 켠 배포에서만 exchange·`/context`의 capabilities에 `source_blame:read`가 실리고, PIPE는 그 capability가 있을 때만 부른다. 꺼진 배포에서는 capability가 없고 경로가 404 `feature_disabled`이며 발급·`/context`는 이전과 같다 — `protocol_version`은 `PSI-1.0` 그대로다. 정확한 스키마와 사유는 pr-search의 handoff OpenAPI·operation map과 `handoff/pipe-search-integration/v1/CONTRACT_DIFF.md` D-26이 소유한다.
 
+> CR-137 보완 (2026-10-01, pr-search): 이 제안 계약의 source 조회에 **파일 경로 목록**이 더해졌다 — PIPE 경로 `GET /source/{repository}/paths`(제안), pr-search 경로 `GET /read/source/{repository}/paths`(operation `read.source.paths`, 입력 `revision`·`after`). pr-search Files & folders 검색과 같은 목록이며 파일 본문은 없다. 게이트가 없어 모든 배포의 `/context` 조회 목록에 나타나고 capability는 `source:read` 그대로다. `next_after`가 `null`이 될 때까지 이어 읽어야 끝이다. `ReadOperationId`를 엄격한 enum으로 검증한다면 먼저 새 값을 받아들이도록 갱신한다. 계약 판은 `PSI-1.0` 그대로다(pr-search 인계 CONTRACT_DIFF D-27).
+
 ## 0. 무엇을 만들고 무엇을 만들지 않는가
 
-만드는 것은 PIPE 사용자가 PIPE 화면에서 pr-search의 읽기 전용 Search 기능을 사용하는 서버 연결이다. PR·commit 검색, M 번호 해석, 저장소 선택, 파일 트리·이력·diff·파일 조회를 포함하고, 선택 기능으로 파일 blame 조회(CR-135 — capability `source_blame:read`가 있을 때만)를 포함한다. Search UI와 App Shell 디자인을 다시 구현하지 않는다. Job/MDVP/승인/workflow 실행, Regression/bisect 쓰기, 관리자·감사 조회, 전체 API 프록시, 검색 색인 복제는 제외한다. 읽기 전용은 제품 데이터/Job/GitHub 작업의 변경을 금지한다는 뜻이다. 이번 인증 grant·매핑·회수 기록, 기존 권한 캐시와 감사 기록에 필요한 제한된 저장은 포함한다.
+만드는 것은 PIPE 사용자가 PIPE 화면에서 pr-search의 읽기 전용 Search 기능을 사용하는 서버 연결이다. PR·commit 검색, M 번호 해석, 저장소 선택, 파일 트리·이력·diff·파일 조회·파일 경로 목록(CR-137)을 포함하고, 선택 기능으로 파일 blame 조회(CR-135 — capability `source_blame:read`가 있을 때만)를 포함한다. Search UI와 App Shell 디자인을 다시 구현하지 않는다. Job/MDVP/승인/workflow 실행, Regression/bisect 쓰기, 관리자·감사 조회, 전체 API 프록시, 검색 색인 복제는 제외한다. 읽기 전용은 제품 데이터/Job/GitHub 작업의 변경을 금지한다는 뜻이다. 이번 인증 grant·매핑·회수 기록, 기존 권한 캐시와 감사 기록에 필요한 제한된 저장은 포함한다.
 
 사용자가 앞서 받은 `PR_SEARCH_TO_PIPE_STAGE1_CLAUDE_PROMPT.md`는 UI 이식과 데이터 경계 문서다. 그 작업의 “인증은 다음 단계”가 바로 이번 작업이다. 실제로 생성된 Stage 1 인수인계 파일이 있으면 함께 읽되, 생성되지 않은 인터페이스나 파일이 이미 있다고 가정하지 않는다.
 
@@ -99,6 +101,7 @@ PostgreSQL / Elasticsearch / GHE
 | `GET /source/{repository}/diff` | 비교 메타데이터 |
 | `GET /source/{repository}/file` | 특정 revision 파일 |
 | `GET /source/{repository}/blame` | 선택 — 특정 revision 파일의 줄 구간별 귀속 커밋(CR-135). capability `source_blame:read`가 있을 때만 쓴다 |
+| `GET /source/{repository}/paths` | 특정 revision의 파일 경로 목록(CR-137) — 본문 없음, `next_after`가 `null`이 될 때까지 이어 읽는다 |
 | `POST /disconnect` | 현재 로그인 문맥의 검색 연결 종료; 전체 PIPE logout hook에서 사용할 수 있는 최소 경로 |
 
 `repository`는 논리적으로 `owner/repo` 하나다. 기존 source API와 동일한 단일 인코딩 파라미터를 기본으로 하되, 실제 HAProxy·Django가 encoded slash를 어떻게 처리하는지 end-to-end 검증한다. 허용 경로를 안전하게 구성할 수 없는 배포라면 계약을 두 저장소에서 함께 개정한다. 무조건 double encoding하거나 경로를 반복 decode하지 않는다.
@@ -121,7 +124,7 @@ PostgreSQL / Elasticsearch / GHE
 | `GET /read/merge-numbers/resolve` | mTLS + grant | 기존 M resolver |
 | `GET /read/pull-requests/{repository}/{prNumber}` | mTLS + grant | 기존 PR 상세 |
 | `GET /read/commits/{repository}/{sha}` | mTLS + grant | 기존 commit 상세 |
-| `GET /read/source/{repository}/{operation}` | mTLS + grant | operation은 tree/history/diff/file 4종과 선택 blame(CR-135 — capability `source_blame:read`가 있을 때만)뿐이다 |
+| `GET /read/source/{repository}/{operation}` | mTLS + grant | operation은 tree/history/diff/file/paths 5종(paths는 CR-137)과 선택 blame(CR-135 — capability `source_blame:read`가 있을 때만)뿐이다 |
 
 일반 pr-search web `/api/*`는 원래 search-api `/api/v1/*`로 프록시되는 별도 계층이다. 위 private prefix와 섞지 않는다. `/read/*`는 문서상의 묶음일 뿐 catch-all proxy 허가가 아니다. 각각 고정 route로 등록한다.
 

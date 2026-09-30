@@ -206,7 +206,8 @@ export function registerIntegrationRoutes(app: FastifyInstance, deps: Integratio
       operation.id.startsWith('read.') &&
       // M 번호가 꺼진 배포에서는 경로가 있어도 원본처럼 404(`feature_disabled`)뿐이다 — 능력 목록과 같이 뺀다 (D-07).
       (operation.id !== 'read.merge_numbers.resolve' || deps.executions.mergeNumbers.mergeNumberEnabled) &&
-      // blame도 같다 (CR-135, D-26). 꺼진 배포의 두 목록은 CR-135 전과 같다 — PSI-1.0을 유지하는 근거다.
+      // blame도 같다 (CR-135, D-26). 꺼진 배포의 능력 목록은 CR-135 전과 같고 조회 목록에 blame이 없다. 경로 목록
+      // (`read.source.paths`, CR-137)은 게이트가 없어 늘 있다 — API 계약 8장의 두 번째 예외다(D-27).
       (operation.id !== 'read.source.blame' || blameEnabled),
   ).map((operation) => operation.id);
 
@@ -619,13 +620,15 @@ export function registerIntegrationRoutes(app: FastifyInstance, deps: Integratio
     );
   });
   // `blame`(CR-135)은 게이트와 무관하게 등록한다 — 꺼진 배포에서는 `executeSource`가 원본 봉투의 404 `feature_disabled`로
-  // 답한다(없는 경로의 연동 404와 다르다). `paths`(CR-133)는 세션 조회만이라 여기 없다.
+  // 답한다(없는 경로의 연동 404와 다르다). `paths`(CR-133)는 CR-137부터 PIPE에도 연다 — 게이트가 없다(D-27).
   const sourceOperations: readonly [string, SourceOperation][] = [
     ['read.source.tree', 'tree'],
     ['read.source.history', 'history'],
     ['read.source.diff', 'diff'],
     ['read.source.file', 'file'],
     ['read.source.blame', 'blame'],
+    // CR-137: 경로 목록(API-SRC-005, D-27).
+    ['read.source.paths', 'paths'],
   ];
   for (const [id, sourceOperation] of sourceOperations) {
     readRoute(id, (request, reply, query, invocation) => {

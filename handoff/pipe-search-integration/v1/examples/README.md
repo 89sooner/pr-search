@@ -27,7 +27,7 @@
 | 사례 | 파일 |
 |---|---|
 | 정상 발급·문맥·회수 | `auth.exchange.200`, `context.200`, `auth.revoke.200`, `auth.revoke_context.200` |
-| 조회 11종의 정상 응답 | `read.*.200` (source 성공 본문에는 `correlation_id` 키가 없다. `read.source.blame.200`은 합성 — blame이 켜진 배포에서만 쓸 수 있다) |
+| 조회 12종의 정상 응답 | `read.*.200` (source 성공 본문에는 `correlation_id` 키가 없다. `read.source.blame.200`은 합성 — blame이 켜진 배포에서만 쓸 수 있다. `read.source.paths.200`은 CR-137 — 끝은 `next_after: null`뿐이다) |
 | 미매핑 | `auth.exchange.403.identity-binding-required` |
 | 권한 없음(범위 밖 단건) | `read.pull_request.404.not-found` — 없는 것과 같은 404, 원본 봉투 |
 | 접근 범위 장애 | `read.repositories.503.permission-unavailable`(연동 봉투, `retryable: true`)와 `read.search.503.permission-unavailable`(원본 봉투, `retryable` 없음) — **같은 코드가 두 모양으로 온다** |

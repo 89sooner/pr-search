@@ -343,6 +343,29 @@
         "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
       ],
       "original_error_schema": "SourceErrorResponse"
+    },
+    {
+      "id": "read.source.paths",
+      "api_id": "API-INT-016",
+      "openapi_operation_id": "readSourcePaths",
+      "method": "GET",
+      "path": "/internal/integrations/pipe/v1/read/source/{repository}/paths",
+      "auth": "mtls+grant",
+      "query_keys": ["revision", "after"],
+      "original": { "api_id": "API-SRC-005", "method": "GET", "path": "/api/v1/source/{repository}/paths" },
+      "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
+      "limits": {
+        "paths_walk_page": 5000,
+        "paths_walk_tree_calls": 100,
+        "paths_recursive_timeout_ms": 45000,
+        "request_deadline_ms": 120000
+      },
+      "integration_error_codes": [
+        "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
+        "GRANT_REVOKED", "GRANT_BINDING_MISMATCH", "CONTEXT_REVOKED", "IDENTITY_BINDING_REQUIRED", "IDENTITY_DISABLED",
+        "IDENTITY_BINDING_CONFLICT", "AUTH_STORE_UNAVAILABLE", "INTERNAL_ERROR"
+      ],
+      "original_error_schema": "SourceErrorResponse"
     }
   ]
 }

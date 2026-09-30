@@ -1,6 +1,8 @@
 # PR Search 인프라 및 운영 아키텍처
 
-> 상태: review | 버전: v0.25 | 갱신일: 2026-09-29
+> 상태: review | 버전: v0.26 | 갱신일: 2026-10-01
+
+CR-137 운영: 단일 호스트의 PostgreSQL은 **호스트 루프백(`127.0.0.1:5433`)에만** 포트를 발행한다 — 같은 호스트의 운영자 도구(`psql` 등)가 접속하는 자리이며, 다른 인터페이스에는 열리지 않고 접속에는 여전히 DB 자격이 필요하다(사용자 결정 2026-10-01, 0.1.0-pilot.21 사내 반입 중의 수정). Elasticsearch·Redis는 그대로 발행하지 않는다. 같은 CR에서 compose가 `.env`의 M 번호 표기·태그 설정 9개(`MNUMBER_ANNOTATE_SWEEP_MS`·`MNUMBER_ANNOTATE_SWEEP_LIMIT`·`MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS`·`MNUMBER_ANNOTATE_WRITE_SPACING_MS`·`GHE_ANNOTATE_REQUEST_TIMEOUT_MS`, `MNUMBER_TAG_SWEEP_MS`·`MNUMBER_TAG_SWEEP_LIMIT`·`MNUMBER_TAG_WRITE_SPACING_MS`·`GHE_TAG_REQUEST_TIMEOUT_MS`)를 컨테이너에 넘긴다 — 전에는 `.env.example`과 RUNBOOK이 적은 이 값이 컨테이너에 닿지 않아 코드 기본값만 쓰였다(DEV-801). compose의 `MNUMBER_TAG_SWEEP_LIMIT` 기본값은 200이라 코드·`.env.example`의 500과 다르다 — `.env`에 이 키가 없는 배포에서만 200이 쓰이며, 사용자 결정으로 그대로 둔다. 새 서비스·마이그레이션은 없다.
 
 CR-135 / FR-SRC-005 운영: source blame(API-SRC-006, PIPE `read.source.blame`)은 **기본 꺼짐**이다 — `SOURCE_BLAME_ENABLED`(search-api만 읽는다, `true`·`false`·빈 값 외에는 기동을 거부한다). 새 서비스·DB·마이그레이션·워커·포트는 없다. 켜면 search-api가 GHE GraphQL에 `POST`한다 — 주소 `GHE_GRAPHQL_URL`은 비워 두면 REST 루트에서 도출한다(`…/api/v3` → `…/api/graphql`, 그 밖은 `<GHE_API_URL>/graphql`. `/api/v3/graphql`이 아니다). 도출한 주소는 같은 GHE 호스트라 아웃바운드 허용 목록은 그대로다(6장 표의 행). 자격은 기존 Data App이며, 사내 GHES의 `Commit.blame` 지원과 필요한 App 권한은 확인하지 못했다. 단일 호스트는 `deploy/single-host/compose.yml`의 search-api가 두 값을 받고(`.env.example`에 주석), 켜는 절차와 증상별 확인은 `deploy/single-host/RUNBOOK.md` 7.L·8장이 소유한다. k8s의 search-api는 `envFrom`으로 ConfigMap `prs-config`를 받으므로 두 키를 그 ConfigMap에 더하면 된다 — 기본 ConfigMap에는 넣지 않았고, 없으면 꺼짐·도출이다.
 
@@ -196,8 +198,8 @@ ES 아카이브(약 700GB)와 `raw_event`(4TB)는 같은 payload를 담지만 �
 
 **Profile A의 노출 규칙** (CR-059 / ADR-021). 오케스트레이터의 네트워크 정책이 없으므로 **노출 자체를 줄이는 것이 통제 수단이다.**
 
-- 서비스 사이 통신은 **Compose 사설 네트워크 안에서만** 이루어진다. PostgreSQL·Elasticsearch·Redis는 **호스트 포트를 발행하지 않는다** — 개발용 `docker-compose.yml`이 5432·9200·6379를 여는 것과 반대이며, 그 차이가 두 파일을 합치지 않는 이유 중 하나다.
-- 호스트에 발행하는 포트는 **사용자 접점 둘뿐이다**: `web`(사용자)과 `ingest-gateway`(GHE 웹훅). `search-api`는 발행하지 않는다 — 조회는 전부 `web`을 거치므로(ADR-011) 외부에서 직접 닿을 이유가 없다.
+- 서비스 사이 통신은 **Compose 사설 네트워크 안에서만** 이루어진다. Elasticsearch·Redis는 **호스트 포트를 발행하지 않고**, PostgreSQL은 **호스트 루프백(`127.0.0.1`)에만** 발행한다(CR-137 — 같은 호스트의 운영자 도구용이며 다른 인터페이스에는 열리지 않는다) — 개발용 `docker-compose.yml`이 5432·9200·6379를 여는 것과 반대이며, 그 차이가 두 파일을 합치지 않는 이유 중 하나다.
+- 호스트 밖으로 발행하는 포트는 **사용자 접점 둘뿐이다**(루프백에만 여는 PostgreSQL은 접점이 아니다, CR-137): `web`(사용자)과 `ingest-gateway`(GHE 웹훅). `search-api`는 발행하지 않는다 — 조회는 전부 `web`을 거치므로(ADR-011) 외부에서 직접 닿을 이유가 없다.
 - **리버스 프록시를 자동으로 세우지 않는다.** Next.js가 이미 그 자리에 있고, TLS 종료나 단일 엔드포인트 통합이 사내 요구로 실증되기 전에 nginx·Caddy·Traefik 의존을 새로 만들 이유가 없다. 필요해지면 근거와 함께 가장 단순한 선택을 한다.
 
 네트워크 정책:

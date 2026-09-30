@@ -369,17 +369,36 @@ describe('선언한 기능이 운영에서 실제로 기동한다 (CR-034)', () 
   });
 
   /*
-   * **백킹 서비스를 호스트에 노출하지 않는다** (인프라 6장 Profile A 규칙).
-   * 오케스트레이터의 네트워크 정책이 없으므로 노출을 줄이는 것이 통제 수단이다.
+   * **백킹 서비스를 호스트 밖으로 노출하지 않는다** (인프라 6장 Profile A 규칙).
+   * 오케스트레이터의 네트워크 정책이 없으므로 노출을 줄이는 것이 통제 수단이다. 예외는 PostgreSQL의 루프백 발행
+   * 하나다(CR-137) — 같은 호스트의 운영자 도구만 닿는다. 다른 인터페이스·Elasticsearch·Redis는 여전히 발행하지 않는다.
    */
-  it('Profile A가 백킹 서비스 포트를 호스트에 발행하지 않는다', () => {
+  it('Profile A가 백킹 서비스 포트를 호스트 밖으로 발행하지 않는다 — PostgreSQL만 루프백에 (CR-137)', () => {
     const compose = read('deploy/single-host/compose.yml');
     for (const service of ['postgres', 'elasticsearch', 'redis']) {
       const start = compose.indexOf(`\n  ${service}:\n`);
       expect(start, `${service} 서비스가 없다`).toBeGreaterThan(0);
       const next = compose.indexOf('\n  ', compose.indexOf('\n', start + 4));
       const block = compose.slice(start, next > start ? compose.indexOf('\n\n', start) : undefined);
-      expect(block, `${service}가 호스트 포트를 발행한다`).not.toContain('ports:');
+      if (service !== 'postgres') {
+        expect(block, `${service}가 호스트 포트를 발행한다`).not.toContain('ports:');
+        continue;
+      }
+      const lines = block.split('\n');
+      const at = lines.findIndex((line) => /^ports:/.test(line.trim()));
+      if (at < 0) continue;
+      // 흐름 형식(`ports: [...]`)·긴 형식은 읽지 않는다 — 읽지 못한 발행을 통과시키지 않으려고 블록 목록만 받는다.
+      expect(lines[at]?.trim(), 'postgres의 `ports:`는 블록 목록으로 적는다').toBe('ports:');
+      const published: string[] = [];
+      for (const line of lines.slice(at + 1)) {
+        const item = /^ {6}- *['"]?([^'"]*)['"]? *$/.exec(line);
+        if (item?.[1] === undefined) break;
+        published.push(item[1]);
+      }
+      expect(published.length, 'postgres의 `ports:` 아래 항목을 읽지 못했다').toBeGreaterThan(0);
+      for (const mapping of published) {
+        expect(mapping, `postgres가 루프백 밖에 발행한다: ${mapping}`).toMatch(/^127\.0\.0\.1:\d+:5432$/);
+      }
     }
   });
 

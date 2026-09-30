@@ -24,7 +24,9 @@
 
 > CR-135 / FR-SRC-005 / ADR-027: blame(API-SRC-006, PIPE `read.source.blame`)은 `executeSource`의 여섯째 operation이다(`SOURCE_OPERATIONS`의 `blame`). 순서는 신원 → 기능 게이트(`SourceRouteOptions.blameEnabled` ← `SOURCE_BLAME_ENABLED`, 꺼지면 404 `feature_disabled`이고 리더·GHE를 부르지 않는다) → 저장소 형식 → 범위 → 등록 404 → 키 검사(`path`·`revision`만) → `sourceBlame`(`apps/search-api/src/source/service.ts`) → `GitHubSourceReader.blame` → `readSourceBlame`(`packages/github/src/source-blame.ts`)이다. PIPE 연동은 `buildServerDeps`가 만든 같은 `source` 실행 객체를 받아 같은 게이트 값을 본다. 조회용 Data App 자격의 **유일한 GraphQL 호출**이며 전송은 `GitHubTransport.postGraphql`(조회 문서만, REST와 같은 토큰 lease·401 무효화·호출자 신호, 호출 기한 `SOURCE_BLAME_TIMEOUT_MS` 30초, GraphQL 동시 상한 `GRAPHQL_CONCURRENCY` 2)이다. 한도 헤더는 REST 토큰 상태에 넣지 않고 재시도·재호출 차단이 없다. 주소는 `resolveGitHubConfig().graphqlUrl`(`GHE_GRAPHQL_URL`, 비면 `deriveGraphqlUrl`)이고 `apps/search-api/src/index.ts`가 전송에 넘긴다(회귀 도달성 가드가 그 배선을 건다). 오류는 `SourceBlameUnsupportedError` → 501, `GitHubApiError`의 종류 → 404·429·503, 그 밖은 502다(API 계약 「CR-135 blame」). 결과는 캐시하지 않는다.
 
-> 상태: review | 버전: v0.24 | 갱신일: 2026-09-29
+> CR-137 / FR-INT-001: PIPE `read.source.paths`(API-INT-016)는 `executeSource`의 `paths`(API-SRC-005, CR-133)를 그대로 실행한다 — `INTEGRATION_OPERATIONS`에 항목 하나, 연동 route의 source 표에 줄 하나다. 게이트가 없어 `/context`의 조회 목록에 늘 있고(M 번호·blame 필터에 해당하지 않는다), 연동 계층의 엄격한 query 검사가 `revision`·`after` 밖의 key를 원본보다 먼저 400으로 거절한다.
+
+> 상태: review | 버전: v0.25 | 갱신일: 2026-10-01
 
 CR-079 / ADR-023: [상세 설계](pr_search_wp074_design.md) 4~8절이 freshness union, mirror→sequence lock 순서, snapshot 재개, 순수 planner, 영속 work CAS의 정본이다. 신규 GHE/ES I/O를 채번 transaction 안에 넣지 않는다. 기존 boolean sync와 ES PR 후보는 M 확정 근거가 아니다. production 부재 증거 가용성은 DEV-581로 추적한다.
 

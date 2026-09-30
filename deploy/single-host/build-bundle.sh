@@ -113,6 +113,7 @@ mkdir -p "$BUNDLE"/{source,images,deploy,manifest,checksums}
 # ── 애플리케이션 이미지 ─────────────────────────────────────────
 # `gh-executor`는 compose의 선택 프로파일이지만 **이미지는 번들에 담는다** (CR-086) —
 # 사내에서 `.env` 한 줄로 켤 수 있어야 하고, 그때 새 번들을 반입하게 하지 않는다.
+# 사내에선 gh-executor를 새로 만들 수 없어 이전 릴리즈를 붙여 쓰는 경우가 있었다 필요에 따라 APP_TARGETS에서 gh-executor를 제외할 수 있다.
 APP_TARGETS=(web search-api ingest-gateway pipeline-worker migrate es-bootstrap gh-executor)
 declare -A IMAGE_NAME=(
   [web]="prs/web"                         [search-api]="prs/search-api"

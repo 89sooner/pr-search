@@ -48,9 +48,14 @@ x-annotate-env: &annotate-env
   GHE_BASE_URL: ${GHE_BASE_URL:?}
   GHE_API_URL: ${GHE_API_URL:-}
   MNUMBER_ANNOTATE_ENABLED: ${MNUMBER_ANNOTATE_ENABLED:-false}
+  MNUMBER_ANNOTATE_SWEEP_MS: ${MNUMBER_ANNOTATE_SWEEP_MS:-86400000}
+  MNUMBER_ANNOTATE_SWEEP_LIMIT: ${MNUMBER_ANNOTATE_SWEEP_LIMIT:-200}
+  MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS: ${MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS:-86400000}
+  MNUMBER_ANNOTATE_WRITE_SPACING_MS: ${MNUMBER_ANNOTATE_WRITE_SPACING_MS:-1000}
   GHE_ANNOTATE_APP_ID: ${GHE_ANNOTATE_APP_ID:-}
   GHE_ANNOTATE_PRIVATE_KEY: ${GHE_ANNOTATE_PRIVATE_KEY:-}
   GHE_ANNOTATE_INSTALLATIONS: ${GHE_ANNOTATE_INSTALLATIONS:-}
+  GHE_ANNOTATE_REQUEST_TIMEOUT_MS: ${GHE_ANNOTATE_REQUEST_TIMEOUT_MS:-10000}
 
 # **태그 전용 App의 자격이다** (WP-100 / FR-SEQ-012 AC-6, ADR-026, CR-115).
 #
@@ -63,9 +68,13 @@ x-annotate-env: &annotate-env
 # 생겨서는 안 된다.
 x-tag-env: &tag-env
   MNUMBER_TAG_ENABLED: ${MNUMBER_TAG_ENABLED:-false}
+  MNUMBER_TAG_SWEEP_MS: ${MNUMBER_TAG_SWEEP_MS:-86400000}
+  MNUMBER_TAG_SWEEP_LIMIT: ${MNUMBER_TAG_SWEEP_LIMIT:-200}
+  MNUMBER_TAG_WRITE_SPACING_MS: ${MNUMBER_TAG_WRITE_SPACING_MS:-1000}
   GHE_TAG_APP_ID: ${GHE_TAG_APP_ID:-}
   GHE_TAG_PRIVATE_KEY: ${GHE_TAG_PRIVATE_KEY:-}
   GHE_TAG_INSTALLATIONS: ${GHE_TAG_INSTALLATIONS:-}
+  GHE_TAG_REQUEST_TIMEOUT_MS: ${GHE_TAG_REQUEST_TIMEOUT_MS:-10000}
 
 x-worker-base: &worker-base
   image: prs/pipeline-worker:${PRS_VERSION:?}
@@ -80,8 +89,10 @@ x-worker-base: &worker-base
 services:
   # ---------- backing services ----------
   #
-  # **호스트 포트를 발행하지 않는다** (인프라 6장 Profile A 규칙). 오케스트레이터의
-  # 네트워크 정책이 없으므로 노출 자체를 줄이는 것이 통제 수단이다.
+  # **호스트 밖으로 포트를 발행하지 않는다** (인프라 6장 Profile A 규칙). 오케스트레이터의
+  # 네트워크 정책이 없으므로 노출 자체를 줄이는 것이 통제 수단이다. 예외는 PostgreSQL의
+  # 루프백 발행 하나다 (CR-137) — 같은 호스트의 운영자 도구가 접속하는 자리이고 다른
+  # 인터페이스에는 열리지 않는다. Elasticsearch·Redis는 발행하지 않는다.
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -89,6 +100,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?}
       POSTGRES_USER: ${POSTGRES_OWNER_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_OWNER_PASSWORD:?}
+    ports:
+      - '127.0.0.1:5433:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

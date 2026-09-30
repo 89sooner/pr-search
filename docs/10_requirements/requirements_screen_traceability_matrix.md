@@ -1,11 +1,15 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.28 | 갱신일: 2026-09-29
+> 상태: review | 버전: v1.29 | 갱신일: 2026-10-01
+
+| 추가 요구사항 (CR-137) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-INT-001 AC-5 (고정 조회 12종 — `read.source.paths`(API-INT-016)는 게이트 없이 모든 배포의 `/context` 조회 목록에, 새 capability 없음, 입력 `revision`·`after`, 끝은 `next_after: null`뿐) | 없음 — 서버 간 API(API-INT-016). W-001 Files & folders 검색(FR-SRC-001 AC-5)은 바뀌지 않는다 | WP-118 | test(PIPE 통합 `openapi.test.ts`의 CR-137 describe·`parity.test.ts`·`blame-disabled.test.ts`·`readonly.test.ts`, 계약 시험 `contract.test.ts`) · PIPE 인계 D-27 |
 
 | 추가 요구사항 (CR-135) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
 | FR-SRC-005 (선택 리비전의 파일 blame — 기능 게이트 기본 꺼짐, 권한 먼저, 서버 소유 고정 query·조회 문서만, GitHub 순서 그대로, 없는 작성자를 지어내지 않음, 미지원 501·권한 503·한도 429·일시 장애 502, Time-lapse와 구분, 본문은 file API) | 없음 — 웹 화면 없음(PIPE용, API-SRC-006·API-INT-015). W-001 Time-lapse·Diff는 바뀌지 않는다 | WP-116 | test(`packages/github`의 `source-blame.test.ts`·`transport.test.ts`·`config.test.ts`·GHE 대역 `testing/source-blame.test.ts`, search-api 단위 `source-blame.test.ts`·통합 `integration/source/source-blame.test.ts`, 회귀 `runtime-reachability.test.ts`) · 실제 경로(원장 6.126장) |
-| FR-INT-001 AC-5 (고정 조회 11종 — `read.source.blame`과 capability `source_blame:read`는 게이트가 켜졌을 때만, 꺼진 배포의 발급·`/context`는 이전과 같다) | 없음 — 서버 간 API(API-INT-015) | WP-116 | test(PIPE 통합 `blame-disabled.test.ts`, 계약·적합성 시험) · PIPE 인계 D-26 |
+| FR-INT-001 AC-5 (고정 조회 11종, CR-137부터 12종(위 CR-137 표) — `read.source.blame`과 capability `source_blame:read`는 게이트가 켜졌을 때만, 꺼진 배포의 발급·`/context`에는 blame이 없다) | 없음 — 서버 간 API(API-INT-015) | WP-116 | test(PIPE 통합 `blame-disabled.test.ts`, 계약·적합성 시험) · PIPE 인계 D-26 |
 
 | 추가 요구사항 (CR-133) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
@@ -81,7 +85,7 @@
 
 | 추가 요구사항 (CR-112) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
-| FR-INT-001 | 없음 — 서버 간 API(API-INT-001~014)다. 조회 결과는 PIPE 화면이 그리며, 기존 W-001·W-002·W-003·W-009와 `/api/v1/*`는 바뀌지 않는다 | WP-097, `apps/search-api/src/integrations/pipe/*`, 공유 조회 실행 함수, 마이그레이션 033 | 단위(assertion·구성·query·grant·재생 방지·전송·운영 조립·적합성 벡터·커서 결속)·통합(`apps/search-api/integration/integrations/pipe/*`, 127.0.0.1 실제 mTLS)·회귀(운영 도달성) |
+| FR-INT-001 | 없음 — 서버 간 API(API-INT-001~016 — 015는 CR-135, 016은 CR-137)다. 조회 결과는 PIPE 화면이 그리며, 기존 W-001·W-002·W-003·W-009와 `/api/v1/*`는 바뀌지 않는다 | WP-097, `apps/search-api/src/integrations/pipe/*`, 공유 조회 실행 함수, 마이그레이션 033 | 단위(assertion·구성·query·grant·재생 방지·전송·운영 조립·적합성 벡터·커서 결속)·통합(`apps/search-api/integration/integrations/pipe/*`, 127.0.0.1 실제 mTLS)·회귀(운영 도달성) |
 
 | 추가 요구사항 (CR-109) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |

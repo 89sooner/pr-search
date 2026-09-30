@@ -37,7 +37,7 @@ import {
 import { applyMappings, createEsClient, resolveClientOptions, switchAliasesForTests } from '@prs/es';
 import { authRepo, pipeIntegrationRepo, repositoryRepo, sequenceSpaceRepo, type Pool } from '@prs/db';
 import type { Redis } from '@prs/bus';
-import type { GitHubSourceReader, SourceBlameRange } from '@prs/github';
+import type { GitHubSourceReader, SourceBlameRange, SourceGitTree } from '@prs/github';
 import { buildServer, type ServerDeps } from '../../../src/server.js';
 import type { AuthContext, AuthRedis } from '../../../src/auth/context.js';
 import type { SearchApiConfig } from '../../../src/config.js';
@@ -78,6 +78,23 @@ export const OPERATOR: UserFixture = { userId: 'github:5003', login: 'olivia-psi
 export const STRANGER: UserFixture = { userId: 'github:5009', login: 'stranger-psi', gheId: 5009, subject: 'pipe-user-x' };
 
 export const SHA = 'a'.repeat(40);
+
+/**
+ * 대역 source reader의 재귀 트리 (CR-137 — 경로 목록 `read.source.paths`). GitHub `recursive=1` 응답의 모양이라 디렉터리
+ * 항목이 섞여 있고 순서도 경로 순서가 아니다 — 원본 경로가 잎(파일·심볼릭 링크)만 경로 순서로 옮기는지 보려는 것이다.
+ */
+export const PATHS_TREE: SourceGitTree = {
+  sha: 'c'.repeat(40),
+  truncated: false,
+  tree: [
+    { path: 'src', type: 'tree', mode: '040000', sha: 'd'.repeat(40) },
+    { path: 'src/pay', type: 'tree', mode: '040000', sha: 'e'.repeat(40) },
+    { path: 'src/pay/retry.ts', type: 'blob', mode: '100644', sha: SHA, size: 120 },
+    { path: 'docs/latest', type: 'blob', mode: '120000', sha: 'f'.repeat(40), size: 9 },
+    { path: 'docs', type: 'tree', mode: '040000', sha: '1'.repeat(40) },
+    { path: 'README.md', type: 'blob', mode: '100644', sha: SHA, size: 5 },
+  ],
+};
 
 /**
  * 대역 source reader의 blame 줄 구간 (CR-135). `@prs/github`가 GraphQL 응답을 옮긴 모양(camelCase)이다 — 원본 경로가
@@ -539,6 +556,8 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
           if (faults.blameError !== null) throw faults.blameError;
           return { revision: String(args[1]), path: String(args[2]), ranges: BLAME_RANGES };
         }
+        // CR-137: 경로 목록의 재귀 트리(`recursive=1`) 한 번. 잘리지 않았으므로 원본은 걷지 않는다.
+        if (method === 'treeRecursive') return PATHS_TREE;
         if (method === 'repository') return { default_branch: 'main' };
         if (method === 'branch') return { commit: { sha: SHA } };
         if (method === 'commit') return { sha: SHA, tree: { sha: 'c'.repeat(40) }, parents: [], message: 'm', author: { name: 'a' } };
@@ -739,6 +758,14 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
         await replica.redis.quit();
       }
       await redis.quit();
+      // 이 하네스가 색인한 fixture 문서를 치운다 (DEV-802). org_id가 1이라, 조직 범위로 색인 전체를 세는 다른 시험
+      // (`authz/team-scope-es`)이 뒤에 돌면 섞인다. 통합 시험은 한 워커에서 파일 크기순으로 돌아 다음 파일을 고를 수 없다.
+      await es.deleteByQuery({
+        index: ['prs-pull-requests', 'prs-commits'],
+        query: { ids: { values: [...PULL_REQUESTS, ...COMMITS].map(({ _id }) => _id) } },
+        refresh: true,
+        conflicts: 'proceed',
+      });
       await es.close();
       await pool.end();
       rmSync(tls.dir, { recursive: true, force: true });

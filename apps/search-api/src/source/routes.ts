@@ -30,7 +30,7 @@ export interface SourceRouteOptions { pool: Pool; reader: () => GitHubSourceRead
 /** source 조회의 실행 재료 (CR-112). 일반 경로와 PIPE 연동 경로가 같은 값을 넘긴다. 세션 컨텍스트는 없다. */
 export type SourceExecution = Omit<SourceRouteOptions, 'auth'>;
 /**
- * `paths`(CR-133, API-SRC-005)는 일반 조회만이다 — PIPE 연동 경로(`integrations/pipe/routes.ts`)는 따로 고정한 목록이라 싣지 않는다.
+ * `paths`(CR-133, API-SRC-005)는 CR-137부터 PIPE 연동 경로(`integrations/pipe/routes.ts`의 `read.source.paths`)도 같은 실행으로 부른다.
  * `blame`(CR-135, API-SRC-006)은 게이트가 꺼져 있어도 경로를 등록한다 — 없는 경로(Fastify 404)가 아니라 `feature_disabled`로 답한다.
  */
 export const SOURCE_OPERATIONS = ['tree', 'history', 'file', 'diff', 'paths', 'blame'] as const;

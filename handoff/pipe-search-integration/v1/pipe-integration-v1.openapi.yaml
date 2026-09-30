@@ -21,7 +21,7 @@ jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 info:
   title: PR Search — PIPE Search Integration (private)
   version: PSI-1.0
-  summary: PIPE 서버가 사용자 신원을 위임해 pr-search의 읽기 전용 조회 11종을 쓰는 서버 간 계약
+  summary: PIPE 서버가 사용자 신원을 위임해 pr-search의 읽기 전용 조회 12종을 쓰는 서버 간 계약
   description: |
     ## 자격
 
@@ -66,7 +66,7 @@ tags:
   - name: context
     description: 검색 사용자 문맥 (연동 전용)
   - name: read
-    description: 원본 조회 11종을 그대로 실행한다 (M 번호 해석·blame은 기능 게이트가 켜진 배포에서만 capabilities·operations에 있다)
+    description: 원본 조회 12종을 그대로 실행한다 (M 번호 해석·blame은 기능 게이트가 켜진 배포에서만 capabilities·operations에 있다)
 
 paths:
   /internal/integrations/pipe/v1/auth/exchange:
@@ -725,6 +725,48 @@ paths:
         default:
           $ref: '#/components/responses/ReadSourceError'
 
+  /internal/integrations/pipe/v1/read/source/{repository}/paths:
+    get:
+      operationId: readSourcePaths
+      x-operation-id: read.source.paths
+      x-api-id: API-INT-016
+      x-auth: mtls+grant
+      x-original:
+        api_id: API-SRC-005
+        method: GET
+        path: /api/v1/source/{repository}/paths
+      tags: [read]
+      summary: 고정 revision의 파일 경로 목록 (원본 API-SRC-005 실행, CR-137)
+      description: >-
+        Files & folders 검색(CR-133)이 읽는 목록과 같다 — 고정 revision의 잎(파일·심볼릭 링크)만 경로 순서로 싣고 본문은
+        없다. `next_after`가 있으면 그 값을 `after`로 넘겨 이어 읽는다. `paths`가 적거나 비어도 끝이 아니며 끝은
+        `next_after: null`뿐이다. `incomplete: true`는 GitHub가 디렉터리 목록을 잘라 빠진 경로가 있을 수 있다는 뜻이다.
+        게이트가 없어 모든 배포의 `/context` operations에 있고, 새 capability 없이 `source:read`로 부른다(CR-137, D-27).
+        검사 순서는 다른 source 조회와 같다: 저장소 형식(400) → 접근 범위(사용자 범위 ∩ client 허용 목록 — 범위 밖·미등록은
+        404, GHE 호출 없음) → 파라미터(400) → GHE.
+      parameters:
+        - $ref: '#/components/parameters/UpstreamCorrelationId'
+        - $ref: '#/components/parameters/Repository'
+        - name: revision
+          in: query
+          required: true
+          description: 40자 hex 커밋 SHA. 트리 응답의 `revision`을 그대로 넘긴다.
+          schema:
+            type: string
+        - name: after
+          in: query
+          required: false
+          description: 직전 응답의 `next_after`. 없으면 처음부터 읽는다. 빈 값·4096자 초과·NUL 문자는 400이다.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/SourcePathsOk'
+        '429':
+          $ref: '#/components/responses/SourceRateLimited'
+        default:
+          $ref: '#/components/responses/ReadSourceError'
+
 components:
   securitySchemes:
     mutualTLS:
@@ -927,6 +969,17 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/SourceBlame'
+    SourcePathsOk:
+      description: 원본과 같은 본문 (`correlation_id` 키가 없다).
+      headers:
+        X-Correlation-Id:
+          $ref: '#/components/headers/XCorrelationId'
+        Cache-Control:
+          $ref: '#/components/headers/CacheControl'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SourcePaths'
     SourceRateLimited:
       description: GHE rate limit. 원본 봉투(`SOURCE_RATE_LIMITED`)이며 `Retry-After`가 붙을 수 있다. 즉시 재시도하지 않는다.
       headers:
@@ -1037,6 +1090,7 @@ components:
         - read.source.diff
         - read.source.file
         - read.source.blame
+        - read.source.paths
       description: 조회 operation의 이름. 이벤트 기록·지표 라벨에도 같은 이름을 쓴다.
 
     AuthContextId:
@@ -3844,6 +3898,36 @@ components:
         body:
           type: [string, 'null']
 
+    SourcePaths:
+      type: object
+      description: >-
+        GET /api/v1/source/{repository}/paths 200 본문(correlation_id 없음, CR-133 / API-SRC-005, PIPE는 CR-137). 고정
+        revision의 잎 경로를 경로 순서로 싣는다. 끝은 next_after가 null일 때뿐이다.
+        (근거: packages/contracts/src/source.ts의 SourcePaths, apps/search-api/src/source/service.ts의 sourcePaths)
+      required: [repository, revision, paths, next_after, incomplete]
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+        revision:
+          type: string
+          pattern: '^[0-9a-fA-F]{40}$'
+        paths:
+          type: array
+          items:
+            type: object
+            required: [path, kind]
+            additionalProperties: false
+            properties:
+              path:
+                type: string
+              kind:
+                type: string
+                enum: [file, symlink]
+        next_after:
+          type: [string, 'null']
+        incomplete:
+          type: boolean
     SourceBlame:
       type: object
       description: >-
