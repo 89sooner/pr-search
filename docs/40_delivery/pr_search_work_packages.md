@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.97 | 갱신일: 2026-10-01
+> 상태: review | 버전: v2.98 | 갱신일: 2026-10-01
 
 ## WP-120 미러 커밋 읽기의 promisor 원격·API 호출 제거 (CR-139)
 
@@ -16,7 +16,7 @@
 - 범위: 사용자가 0.1.0-pilot.21 사내 반입 중 고친 여섯 파일의 의미 있는 변경(형식 정리는 되돌림), PIPE 계약(OpenAPI·operation map·예시·CONTRACT_DIFF D-27·HANDOFF·DEPLOYMENT·manifest), 계약·통합·회귀 시험, 요구사항·설계 문서, 원장.
 - 제외: `agent-context/upstream-feedback.md`가 요청한 결함 수정(git show → git log -1), compose가 넘기지 않는 나머지 태그 설정, 새 Release 발행, 사내 적용, PIPE 쪽 변경.
 - 완료 기준: 사용자 판과 의미가 같고(compose YAML 동일, PIPE 코드 토큰 동일), 계약 단위 시험·PIPE 통합 시험·회귀 시험이 새 조회와 루프백 규칙을 걸며(변이로 확인), 전 계층 게이트가 초록이다.
-- 상태: in_progress — 브랜치 `feature/cr137-pipe-source-paths`. 검증은 원장 6.128장이다.
+- 상태: done — main `bdf6416`(PR #263 squash 병합, 2026-10-01). 검증·병합 판정은 원장 6.128장이다.
 
 ## WP-117 PIPE 연동 인증 간소화 검토서 (CR-136)
 
@@ -307,7 +307,7 @@
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
 | WP-120 | 미러 커밋 읽기의 promisor 원격·API 호출 제거 | correction (CR-139) | WP-020, WP-067, WP-074 | done — main `d4967a9`(PR #264), 원장 6.130장 |
-| WP-118 | 사내 반입 중 사용자 수정 — PIPE 경로 목록·배포 설정 | 범위 변경 (CR-137) | WP-097, WP-114, WP-116 | in_progress — 브랜치 `feature/cr137-pipe-source-paths`, 원장 6.128장 |
+| WP-118 | 사내 반입 중 사용자 수정 — PIPE 경로 목록·배포 설정 | 범위 변경 (CR-137) | WP-097, WP-114, WP-116 | done — main `bdf6416`(PR #263), 원장 6.128장 |
 | WP-117 | PIPE 연동 인증 간소화 검토서 | 검토 (CR-136) | WP-097 | done — main `0d14990`(PR #260), 원장 6.127장 |
 | WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | WP-085, WP-097, WP-113 | done — main `311fdb0`(PR #259), 원장 6.126장 |
 | WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | done — main `a02a145`(PR #258), 원장 6.125장 |
