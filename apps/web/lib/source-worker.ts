@@ -1,11 +1,13 @@
 /**
  * Source analysis worker (CR-132): large line diffs and Time-lapse lineage run here so the page stays responsive.
  *
- * Messages: `diff` (two texts), `trace` (a revision range the worker reads itself), `cancel`. Results carry typed arrays
- * whose buffers are transferred, not copied. The worker is created per job and terminated by the page when the job
- * ends or is cancelled.
+ * Messages: `diff` (two texts), `trace` (a revision range the worker reads itself), `cancel`. The worker answers
+ * `started` when it takes a job, then `progress`, and one of `result`, `error` or `cancelled`. Results carry typed arrays
+ * whose buffers are transferred, not copied. A trace that stops (cancelled, or a read that still fails) sends back what it
+ * analyzed so far (CR-138), so the page can continue it. The worker is created per job and terminated by the page when
+ * the job ends or is cancelled.
  */
-import { runDiffJob, runTraceJob, type TraceJobInput } from './source-jobs';
+import { TraceStoppedError, lineageBuffers, runDiffJob, runTraceJob, type TraceJobInput, type TracePartial } from './source-jobs';
 
 type Request =
   | { readonly id: number; readonly type: 'diff'; readonly before: string; readonly after: string }
@@ -21,8 +23,10 @@ const scope = globalThis as unknown as WorkerScope;
 const running = new Map<number, AbortController>();
 
 function failure(id: number, error: unknown): void {
-  if (error instanceof Error && error.name === 'AbortError') scope.postMessage({ id, type: 'cancelled' });
-  else scope.postMessage({ id, type: 'error', message: error instanceof Error ? error.message : 'The analysis failed.' });
+  const partial: TracePartial | null = error instanceof TraceStoppedError ? error.partial : null;
+  const transfer = partial ? lineageBuffers(partial.lineage) : [];
+  if (error instanceof Error && error.name === 'AbortError') scope.postMessage({ id, type: 'cancelled', partial }, transfer);
+  else scope.postMessage({ id, type: 'error', message: error instanceof Error ? error.message : 'The analysis failed.', partial }, transfer);
 }
 
 scope.addEventListener('message', (event) => {
@@ -31,6 +35,7 @@ scope.addEventListener('message', (event) => {
     running.get(request.id)?.abort();
     return;
   }
+  scope.postMessage({ id: request.id, type: 'started' });
   if (request.type === 'diff') {
     try {
       const result = runDiffJob(request.before, request.after);
@@ -43,11 +48,7 @@ scope.addEventListener('message', (event) => {
   const controller = new AbortController();
   running.set(request.id, controller);
   runTraceJob(request.input, { signal: controller.signal, onProgress: (progress) => { scope.postMessage({ id: request.id, type: 'progress', progress }); } })
-    .then((result) => {
-      const { lineage } = result;
-      const buffers = [lineage.nodeParent, lineage.nodeRevision, lineage.nodeLine, lineage.nodeKind, lineage.nodeDepth, ...lineage.lineNodes].map((array) => array.buffer);
-      scope.postMessage({ id: request.id, type: 'result', result }, buffers);
-    })
+    .then((result) => { scope.postMessage({ id: request.id, type: 'result', result }, lineageBuffers(result.lineage)); })
     .catch((error: unknown) => { failure(request.id, error); })
     .finally(() => { running.delete(request.id); });
 });

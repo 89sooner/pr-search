@@ -1,8 +1,9 @@
 import { diffArrays } from 'diff';
 import { describe, expect, it } from 'vitest';
-import { compareLines, lines, traceLines } from './source-analysis';
+import { lines } from './source-analysis';
+import { compareLines, naiveLineage, traceLines } from './source-line-oracle';
 import {
-  EXACT_BUDGET, LineageBuilder, ROW_CHANGE, ROW_EQUAL, diffLineArrays, lineEvents, rowCount, splitLines, type DiffBudget, type LineDiff,
+  CHECKPOINT_EVERY, EXACT_BUDGET, LineageBuilder, ROW_CHANGE, ROW_EQUAL, diffLineArrays, lineEvents, nodesAt, rowCount, splitLines, type DiffBudget, type Lineage, type LineDiff,
 } from './source-compute';
 
 /** mulberry32: every random input is reproducible from its seed. */
@@ -272,7 +273,7 @@ describe('FR-SRC-004 inferred line lineage over many revisions', () => {
       const lineage = builder.result();
       versions.forEach((version, revision) => {
         const today = traced.get(version.sha)!;
-        expect(lineage.lineNodes[revision]!.length).toBe(today.length);
+        expect(nodesAt(lineage, revision)!.length).toBe(today.length);
         today.forEach((line, index) => expect(lineEvents(lineage, revision, index), `seed ${seed} ${version.sha}:${index + 1}`).toEqual(line.events));
       });
     }
@@ -309,10 +310,10 @@ describe('FR-SRC-004 inferred line lineage over many revisions', () => {
       { sha: 'd', line: 3, text: 'return 3;', kind: 'edited' },
     ]);
     expect(lineEvents(lineage, 1, 0)).toEqual([{ sha: 'b', line: 1, text: '// note', kind: 'added' }]);
-    const depth = (revision: number, line: number): number => lineage.nodeDepth[lineage.lineNodes[revision]![line]!]!;
+    const depth = (revision: number, line: number): number => lineage.nodeDepth[nodesAt(lineage, revision)![line]!]!;
     expect([depth(0, 1), depth(1, 2), depth(2, 2), depth(3, 2), depth(1, 0), depth(3, 0)]).toEqual([1, 1, 2, 3, 1, 1]);
     // Unchanged lines keep their node; only changed lines create nodes.
-    expect(lineage.lineNodes[3]![1]).toBe(lineage.lineNodes[0]![0]);
+    expect(nodesAt(lineage, 3)![1]).toBe(nodesAt(lineage, 0)![0]);
     expect(Array.from(lineage.nodeKind)).toEqual([0, 0, 1, 2, 2]);
     expect(Array.from(lineage.nodeParent)).toEqual([-1, -1, -1, 1, 3]);
     expect(Array.from(lineage.nodeRevision)).toEqual([0, 0, 1, 2, 3]);
@@ -338,10 +339,10 @@ describe('FR-SRC-004 inferred line lineage over many revisions', () => {
         expect(lineage.approximatePairs).toBe(flags.filter(Boolean).length);
         expect(lineage.revisions).toEqual(versions.map(version => version.sha));
         texts.forEach((text, revision) => {
-          expect(lineage.lineNodes[revision]!.length).toBe(text.length);
+          expect(nodesAt(lineage, revision)!.length).toBe(text.length);
           text.forEach((line, index) => {
             const events = lineEvents(lineage, revision, index); const context = `seed ${seed} r${revision}:${index + 1}`;
-            expect(events.length, context).toBe(lineage.nodeDepth[lineage.lineNodes[revision]![index]!]);
+            expect(events.length, context).toBe(lineage.nodeDepth[nodesAt(lineage, revision)![index]!]);
             expect(events.at(-1)!.text, context).toBe(line);
             expect(events[0]!.kind, context).not.toBe('edited');
             expect(events.slice(1).every(event => event.kind === 'edited'), context).toBe(true);
@@ -359,7 +360,7 @@ describe('FR-SRC-004 inferred line lineage over many revisions', () => {
     const first = builder.result();
     builder.addRevision('b', ['one', 'TWO', 'three']);
     expect(first.revisions).toEqual(['a']);
-    expect(first.lineNodes).toHaveLength(1);
+    expect(first.lineCounts).toHaveLength(1);
     expect(first.nodeParent).toHaveLength(2);
     expect(first.nodeText).toEqual(['one', 'two']);
     const second = builder.result();
@@ -438,7 +439,7 @@ describe('FR-SRC-003/004 large inputs', () => {
     expect(lineage.nodeParent.length).toBeLessThanOrEqual(2000 + insertedOrReplaced);
     for (const array of [lineage.nodeRevision, lineage.nodeLine, lineage.nodeKind, lineage.nodeDepth]) expect(array.length).toBe(lineage.nodeParent.length);
     expect(lineage.nodeText).toHaveLength(lineage.nodeParent.length);
-    const last = lineage.lineNodes[999]!;
+    const last = nodesAt(lineage, 999)!;
     expect(last.length).toBe(current.length);
     let deepest = 0;
     for (let i = 0; i < last.length; i++) {
@@ -448,5 +449,96 @@ describe('FR-SRC-003/004 large inputs', () => {
       deepest = Math.max(deepest, events.length);
     }
     expect(deepest).toBeGreaterThan(1);
+  }, 60_000);
+});
+
+describe('CR-138 FR-SRC-004 the lineage keeps what changed, not lines × revisions', () => {
+  /** A reproducible history: inserts, deletes, edits, a line deleted then re-added, repeated lines, emptied file. */
+  function history(seed: number, revisions: number, size: number): { sha: string; lines: string[] }[] {
+    const random = prng(seed); let serial = 0;
+    const fresh = (): string => (random() < 0.7 ? `line ${serial++}` : ['', '}', 'return;', '  // same'][pick(random, 4)]!);
+    let current = Array.from({ length: size }, fresh);
+    const out: { sha: string; lines: string[] }[] = [];
+    let removed: string | null = null;
+    for (let v = 0; v < revisions; v++) {
+      if (v > 0) {
+        current = current.slice();
+        const op = pick(random, 10);
+        if (op === 0 && current.length > 0) { removed = current.splice(pick(random, current.length), 1)[0] ?? null; }
+        else if (op === 1 && removed !== null) { current.splice(pick(random, current.length + 1), 0, removed); removed = null; }
+        else if (op === 2) current = v % 97 === 0 ? [] : current.reverse();
+        else for (let e = 1 + pick(random, 4); e > 0; e--) {
+          const at = pick(random, current.length + 1); const kind = pick(random, 3);
+          if (kind === 0 || current.length === 0) current.splice(at, 0, fresh()); else if (kind === 1) current.splice(Math.min(at, current.length - 1), 1); else current[Math.min(at, current.length - 1)] = fresh();
+        }
+      }
+      out.push({ sha: `r${String(v)}`, lines: current });
+    }
+    return out;
+  }
+  function build(versions: readonly { sha: string; lines: readonly string[] }[]): Lineage {
+    const builder = new LineageBuilder();
+    for (const version of versions) builder.addRevision(version.sha, version.lines);
+    return builder.result();
+  }
+  function expectSame(lineage: Lineage, versions: readonly { sha: string; lines: readonly string[] }[]): void {
+    const naive = naiveLineage(versions);
+    expect(lineage.revisions).toEqual(naive.revisions);
+    expect(Array.from(lineage.lineCounts)).toEqual(versions.map((version) => version.lines.length));
+    for (let revision = 0; revision < versions.length; revision++) {
+      const nodes = nodesAt(lineage, revision)!;
+      // Byte for byte the node array the pre-CR-138 builder kept for this revision.
+      if (!nodes.every((node, index) => node === naive.lineNodes[revision]![index]) || nodes.length !== naive.lineNodes[revision]!.length) {
+        throw new Error(`revision ${String(revision)} differs from the per-revision builder`);
+      }
+    }
+    expect(Array.from(lineage.nodeParent)).toEqual(naive.nodeParent);
+    expect(Array.from(lineage.nodeRevision)).toEqual(naive.nodeRevision);
+    expect(Array.from(lineage.nodeLine)).toEqual(naive.nodeLine);
+    expect(Array.from(lineage.nodeKind)).toEqual(naive.nodeKind);
+    expect(Array.from(lineage.nodeDepth)).toEqual(naive.nodeDepth);
+    expect(lineage.nodeText).toEqual(naive.nodeText);
+  }
+
+  it('CR-138 FR-SRC-004 every revision rebuilt from checkpoints and runs equals the per-revision node arrays (random histories across many checkpoints)', () => {
+    for (const seed of [11, 12, 13]) {
+      const versions = history(seed, 3 * CHECKPOINT_EVERY + 17, 120);
+      expectSame(build(versions), versions);
+    }
+  }, 60_000);
+
+  it('CR-138 FR-SRC-004 an analysis restored after its last revision continues exactly as if it had never stopped', () => {
+    const versions = history(21, 2 * CHECKPOINT_EVERY + 9, 80);
+    for (const stop of [1, CHECKPOINT_EVERY - 1, CHECKPOINT_EVERY, CHECKPOINT_EVERY + 5, versions.length - 1]) {
+      const first = new LineageBuilder();
+      for (const version of versions.slice(0, stop)) first.addRevision(version.sha, version.lines);
+      const snapshot = first.result();
+      const restored = LineageBuilder.restore(snapshot, versions[stop - 1]!.lines);
+      for (const version of versions.slice(stop)) restored.addRevision(version.sha, version.lines);
+      expectSame(restored.result(), versions);
+      expect(restored.storedBytes).toBe((() => { const whole = new LineageBuilder(); for (const version of versions) whole.addRevision(version.sha, version.lines); return whole.storedBytes; })());
+    }
+    // The text read again must be the one the lineage stopped at.
+    const partial = build(versions.slice(0, 3));
+    expect(() => LineageBuilder.restore(partial, [...versions[2]!.lines, 'one more line'])).toThrow('The last analyzed revision changed.');
+  }, 60_000);
+
+  it('CR-138 FR-SRC-004 memory follows the changed lines: 1,500 revisions of a 20,000-line file keep far less than the 30 million cells the old arrays needed', () => {
+    let current = Array.from({ length: 20_000 }, (_, i) => `statement ${String(i)}`);
+    const builder = new LineageBuilder();
+    for (let v = 0; v < 1500; v++) {
+      if (v > 0) { current = current.slice(); current[(v * 7919) % current.length] = `edited ${String(v)}`; }
+      builder.addRevision(`r${String(v)}`, current);
+    }
+    const lineage = builder.result();
+    const oldCells = 20_000 * 1500;
+    expect(oldCells).toBeGreaterThan(20_000_000);
+    // Checkpoints (24 × 20,000 cells) and the runs dominate; the per-revision layout would have been 4 bytes × 30 M = 120 MB.
+    expect(builder.storedBytes).toBeLessThan(oldCells * 4 / 10);
+    expect(lineage.checkpoints).toHaveLength(Math.ceil(1500 / CHECKPOINT_EVERY));
+    expect(nodesAt(lineage, 1499)!.length).toBe(20_000);
+    expect(lineEvents(lineage, 1499, (1499 * 7919) % 20_000).at(-1)).toMatchObject({ sha: 'r1499', kind: 'edited', text: 'edited 1499' });
+    expect(nodesAt(lineage, 1500)).toBeUndefined();
+    expect(nodesAt(lineage, -1)).toBeUndefined();
   }, 60_000);
 });

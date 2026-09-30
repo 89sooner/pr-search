@@ -7,7 +7,7 @@
  * merged. Nothing is stored beyond the page's memory.
  */
 import type { SourcePathEntry, SourcePaths } from '@prs/contracts';
-import { fetchSource, sourceUrl } from './source-client';
+import { fetchSourceRetrying, sourceUrl } from './source-client';
 
 export interface PathMatch {
   readonly entry: SourcePathEntry;
@@ -76,7 +76,8 @@ export function matchPaths(list: PathList, query: string, limit: number): PathMa
 export async function loadPaths(repository: string, revision: string, options: { readonly signal: AbortSignal; readonly after?: string | null; readonly onPage: (page: SourcePaths) => void }): Promise<void> {
   let after = options.after ?? null;
   for (let pages = 0; ; pages += 1) {
-    const page = await fetchSource<SourcePaths>(sourceUrl(repository, 'paths', { revision, after: after ?? undefined }), options.signal);
+    // CR-138: a rate limit or a temporary upstream failure waits and asks again for the same page.
+    const page = await fetchSourceRetrying<SourcePaths>(sourceUrl(repository, 'paths', { revision, after: after ?? undefined }), options.signal);
     if (page.revision !== revision) throw new Error('The file list belongs to another revision. Try again.');
     // The server always moves forward; a cursor that does not is a protocol error, not a reason to loop.
     if (page.next_after !== null && (page.next_after === after || pages > 100_000)) throw new Error('The file list could not be read to its end. Try again.');

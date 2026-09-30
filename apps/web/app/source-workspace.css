@@ -82,8 +82,8 @@
 .source-changed-files { overflow:auto; padding:15px 10px; border-right:1px solid var(--ui-border-default); background:var(--ui-surface-subtle); }
 .source-changed-files h3 { display:flex; justify-content:space-between; margin:0 8px 14px; font-size:12px; }
 .source-changed-files > input { width:100%; min-width:0; padding:8px; background:var(--ui-surface-raised); border:1px solid var(--ui-border-default); border-radius:5px; font-size:11px; margin-bottom:10px; }
-.source-changed-files > button { display:flex; align-items:start; gap:7px; border:0; width:100%; border-radius:5px; text-align:left; background:none; padding:10px 8px; color:var(--ui-text-secondary); font-size:11px; }
-.source-changed-files > button[aria-pressed='true'] { background:var(--ui-accent-soft); color:var(--ui-accent); }
+.source-changed-file-list > button { display:flex; align-items:start; gap:7px; border:0; width:100%; border-radius:5px; text-align:left; background:none; padding:10px 8px; color:var(--ui-text-secondary); font-size:11px; }
+.source-changed-file-list > button[aria-pressed='true'] { background:var(--ui-accent-soft); color:var(--ui-accent); }
 .source-changed-files button > span { min-width:0; overflow-wrap:anywhere; flex:1; }
 .source-changed-files small { display:block; color:var(--ui-text-muted); font-size:9px; margin-top:5px; }
 .source-changed-files button[aria-pressed='true'] small,.source-revisions button[aria-pressed='true'] small { color:var(--ui-text-secondary); }
@@ -150,6 +150,13 @@
 /* CR-132: long tables render only the rows near the viewport; every row keeps the one-line height the scroll math uses. */
 .source-virtual .source-context-expand { height:21px; padding:0 7px; line-height:21px; }
 .source-virtual-pad td { padding:0; border:0; }
+/* CR-138: the changed-file and revision lists read to the end, so long ones render only the rows near the viewport; each row keeps the fixed size the scroll math uses. */
+.source-changed-files > .source-list-limit { margin:0 0 10px; }
+.source-changed-file-list--virtual > button { height:48px; overflow:hidden; align-items:center; }
+.source-changed-file-list--virtual > button > span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.source-changed-file-list--virtual small { margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.source-revisions--virtual button { height:84px; overflow:hidden; flex:none; }
+.source-revisions--virtual strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .source-list-limit { margin:12px 8px 0; padding:10px; border:1px solid var(--ui-border-default); border-radius:5px; background:var(--ui-surface-raised); color:var(--ui-text-secondary); font-size:11px; line-height:1.6; display:grid; gap:8px; }
 .source-list-limit p { margin:0; }
 .source-analysis-range select { padding:5px 8px; border:1px solid var(--ui-border-default); border-radius:5px; background:var(--ui-surface-raised); color:var(--ui-text-primary); font-size:11px; }

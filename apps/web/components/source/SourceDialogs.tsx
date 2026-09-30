@@ -7,11 +7,11 @@ import { Button, Dialog } from '../ui';
 import { formatDate } from '../../lib/format';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { wordChanges } from '../../lib/source-analysis';
-import { ROW_CHANGE, lineEvents } from '../../lib/source-compute';
+import { ROW_CHANGE, lineEvents, nodesAt } from '../../lib/source-compute';
 import { displayLine, rawLines } from '../../lib/source-jobs';
-import { formatBytes, type LoadedFile } from '../../lib/source-client';
-import { fetchSource, sourceUrl, useSource } from './api';
-import { LINE_HEIGHT, scrollToRow, useFileText, useLineDiff, useOffsets, useTrace, useVirtualWindow, type VirtualWindow } from './hooks';
+import { fetchSourceRetrying, formatBytes, type LoadedFile } from '../../lib/source-client';
+import { sourceUrl, useSource } from './api';
+import { LINE_HEIGHT, scrollToRow, useChangedFiles, useFileText, useLineDiff, useNarrow, useOffsets, useTrace, useVirtualWindow, type VirtualWindow } from './hooks';
 
 export interface DiffTarget { repository: string; pr?: number; commit?: string; file?: { path: string; base: string | null; head: string } }
 function ModalFrame({ title, subtitle, children, onClose, badge }: { title: string; subtitle: string; children: ReactNode; onClose: () => void; badge: string }) {
@@ -44,8 +44,6 @@ function highlight(text: string, needle: string): ReactNode {
   result.push(text.slice(offset)); return result;
 }
 const EMPTY_FILE: LoadedFile = { status: 'text', text: '', size: 0, sha: null, reason: null };
-/** GitHub lists at most this many changed files for one pull request or commit (its own documented limit). */
-const GITHUB_FILE_LIST_LIMIT = 3000;
 const progressText = (states: readonly { progress: { loaded: number; total: number | null } | null }[]): string => {
   const known = states.filter(state => state.progress !== null && state.progress.total !== null);
   if (!known.length) return '';
@@ -57,44 +55,40 @@ function Pad({ height, columns }: { height: number; columns: number }) {
   return height > 0 ? <tr aria-hidden="true" className="source-virtual-pad" style={{ height }}><td colSpan={columns} /></tr> : null;
 }
 
+/** Height of one changed-file row once the list is long enough to be virtualized (CSS pins the rows to it). */
+const FILE_ROW_HEIGHT = 48;
+const count = (value: number): string => value.toLocaleString('en-US');
+const waitText = (ms: number | null): string => (ms === null ? '' : ` GitHub asked to wait — trying again in ${String(Math.max(1, Math.round(ms / 1000)))} s.`);
+
 /**
- * CR-132: the complete changed-file list beyond GitHub's 3,000-file limit, read by comparing the two pinned trees.
- * Line counts and renames are not available from a tree comparison, so those columns show "—".
+ * CR-138: the changed files of a comparison, every one of them. The list reads its pages by itself (useChangedFiles);
+ * above the virtualization threshold only the rows near the viewport are in the DOM.
  */
-function useTreeListing(repository: string, pinned: { base: string | null; head: string } | null) {
-  const [state, setState] = useState<{ active: boolean; files: SourceChange[]; next: string | null; loading: boolean; error: string; partial: boolean }>({ active: false, files: [], next: null, loading: false, error: '', partial: false });
-  const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => { controller.current?.abort(); }, []);
-  const load = useCallback((after: string | null) => {
-    if (pinned === null) return;
-    controller.current?.abort(); const abort = new AbortController(); controller.current = abort;
-    setState(value => ({ ...value, active: true, loading: true, error: '' }));
-    fetchSource<SourceComparison>(sourceUrl(repository, 'diff', { listing: 'tree', head: pinned.head, base: pinned.base ?? undefined, after: after ?? undefined }), abort.signal)
-      .then(page => {
-        if (abort.signal.aborted) return;
-        if (page.head !== pinned.head || page.base !== pinned.base) { setState(value => ({ ...value, loading: false, error: 'The compared revisions changed. Close and reopen the comparison.' })); return; }
-        setState(value => ({ active: true, files: after === null ? page.files : [...value.files, ...page.files], next: page.next_after ?? null, loading: false, error: '', partial: value.partial || page.truncated }));
-      })
-      .catch((error: unknown) => { if (!abort.signal.aborted) setState(value => ({ ...value, loading: false, error: error instanceof Error ? error.message : 'Unable to load the changed files.' })); });
-  }, [repository, pinned]);
-  return { ...state, start: () => { load(null); }, more: () => { load(state.next); } };
+function ChangedFileList({ files, selected, onSelect, counts, scroller }: { files: readonly SourceChange[]; selected: string | undefined; onSelect: (path: string) => void; counts: (file: SourceChange) => string; scroller: RefObject<HTMLElement | null> }) {
+  // The aside scrolls (its heading, filter and notes come first); the rows are measured from the list's own start.
+  const list = useRef<HTMLDivElement>(null);
+  const rowHeight = useCallback(() => FILE_ROW_HEIGHT, []);
+  const offsets = useOffsets(files.length, rowHeight);
+  const windowed = useVirtualWindow(scroller, offsets, 'y', list);
+  const rendered: ReactNode[] = [];
+  for (let index = windowed.start; index < windowed.end; index++) {
+    const item = files[index]!;
+    rendered.push(<button type="button" key={item.path} title={item.path} aria-pressed={selected === item.path} onClick={() => { onSelect(item.path); }}><FileCode size={14} /><span>{item.path}<small>{item.status}{item.previous_path ? ` ← ${item.previous_path}` : ''}</small></span><small className="source-file-count">{counts(item)}</small></button>);
+  }
+  return <div ref={list} className={`source-changed-file-list${windowed.virtual ? ' source-changed-file-list--virtual' : ''}`}>
+    {windowed.padTop > 0 ? <div aria-hidden="true" style={{ height: windowed.padTop }} /> : null}{rendered}{windowed.padBottom > 0 ? <div aria-hidden="true" style={{ height: windowed.padBottom }} /> : null}
+  </div>;
 }
 
 export function DiffModal({ target, onClose }: { target: DiffTarget; onClose: () => void }) {
-  const [page, setPage] = useState(1); const metadata = useSource<SourceComparison>(target.file ? null : sourceUrl(target.repository, 'diff', { pr: target.pr, commit: target.commit, page, related: target.commit ? 'all' : undefined }));
-  const [allFiles, setAllFiles] = useState<SourceChange[]>([]); const [selected, setSelected] = useState(target.file?.path ?? ''); const [filter, setFilter] = useState(''); const [contextError, setContextError] = useState('');
-  const pinned = useRef<{ base: string | null; head: string } | null>(null);
-  useEffect(() => {
-    if (!metadata.data) return;
-    if (pinned.current && (metadata.data.head !== pinned.current.head || metadata.data.base !== pinned.current.base)) { setContextError('This PR changed while loading files. Close and reopen the comparison.'); return; }
-    pinned.current = { base: metadata.data.base, head: metadata.data.head };
-    setAllFiles(previous => { if (page === 1) return metadata.data!.files; const seen = new Set(previous.map(file => file.path)); return [...previous, ...metadata.data!.files.filter(file => !seen.has(file.path))]; });
-    setSelected(previous => previous || metadata.data!.files[0]?.path || '');
-  }, [metadata.data, page]);
-  const listing = useTreeListing(target.repository, pinned.current);
-  const files: SourceChange[] = target.file ? [{ path: target.file.path, previous_path: null, status: 'modified', additions: 0, deletions: 0 }] : listing.active ? listing.files : allFiles;
+  const changes = useChangedFiles(target.repository, target.file ? null : { ...(target.pr !== undefined ? { pr: target.pr } : {}), ...(target.commit !== undefined ? { commit: target.commit } : {}) });
+  const comparison = changes.comparison;
+  const [selected, setSelected] = useState(target.file?.path ?? ''); const [filter, setFilter] = useState('');
+  const fileAside = useRef<HTMLElement>(null);
+  const files: readonly SourceChange[] = target.file ? [{ path: target.file.path, previous_path: null, status: 'modified', additions: 0, deletions: 0 }] : changes.files;
+  useEffect(() => { if (!selected && files[0]) setSelected(files[0].path); }, [files, selected]);
   const file = files.find(item => item.path === selected) ?? files[0];
-  const originalBase = target.file?.base ?? pinned.current?.base ?? null; const originalHead = target.file?.head ?? pinned.current?.head ?? '';
+  const originalBase = target.file?.base ?? comparison?.base ?? null; const originalHead = target.file?.head ?? comparison?.head ?? '';
   const [swapped, setSwapped] = useState(false);
   const beforePath = file?.previous_path ?? file?.path ?? ''; const afterPath = file?.path ?? '';
   const beforeState = useFileText(target.repository, file && originalBase && file.status !== 'added' ? beforePath : null, originalBase);
@@ -149,35 +143,47 @@ export function DiffModal({ target, onClose }: { target: DiffTarget; onClose: ()
   }
   const loadingFiles = beforeState.loading || afterState.loading;
   const cancelledLoad = beforeState.cancelled || afterState.cancelled || diff.cancelled;
-  const failure = contextError || metadata.error || listing.error || beforeState.error || afterState.error || diff.error;
-  const busy = loadingFiles || diff.computing || (!files.length && metadata.loading);
-  const githubLimit = !target.file && !listing.active && !metadata.loading && !metadata.data?.next_page && (allFiles.length >= GITHUB_FILE_LIST_LIMIT || metadata.data?.truncated === true);
+  // A list failure blocks the pane only before any file is listed; later it is reported beside the list (CR-138).
+  const listFailure = !target.file && !files.length ? changes.error : '';
+  const failure = listFailure || beforeState.error || afterState.error || diff.error;
+  const busy = loadingFiles || diff.computing || (!target.file && !files.length && changes.loading);
   const unavailable = !loadingFiles && !cancelledLoad && Boolean(file) && originalBefore !== null && originalAfter !== null && (beforeText === null || afterText === null);
   const changedRows = useMemo(() => (rows ? rowsChanged(rows) : 0), [rows]);
   const allEqual = rows !== null && changedRows === 0;
-  const retry = () => { metadata.reload(); beforeState.reload(); afterState.reload(); diff.retry(); };
-  const count = (item: SourceChange, side: 'additions' | 'deletions') => { if (target.file) return rows ? String(counts[side]) : '—'; const value = item[side]; return value === null ? '—' : String(value); };
-  return <ModalFrame title={target.pr ? `Pull request #${target.pr}` : metadata.data?.commit.message.split('\n')[0] || 'Compare changes'} subtitle={`${target.repository} · ${originalBase?.slice(0, 9) ?? 'Empty tree'} → ${originalHead.slice(0, 9)}`} badge="DIFF" onClose={onClose}>
+  const retry = () => { if (listFailure) changes.resume(); beforeState.reload(); afterState.reload(); diff.retry(); };
+  const fileCount = useCallback((item: SourceChange): string => {
+    const value = (side: 'additions' | 'deletions'): string => { if (target.file) return rows ? String(counts[side]) : '—'; const number = item[side]; return number === null ? '—' : String(number); };
+    return target.file && !rows ? '—' : `+${value('additions')} −${value('deletions')}`;
+  }, [target.file, rows, counts]);
+  const needle = filter.toLowerCase();
+  const shownFiles = useMemo(() => (needle ? files.filter(item => `${item.path} ${item.previous_path ?? ''}`.toLowerCase().includes(needle)) : files), [files, needle]);
+  const listStatus = target.file ? null
+    : changes.loading ? <div className="source-list-limit"><p role="status">Loading changed files… {count(files.length)} so far.{waitText(changes.waitingMs)}</p><Button variant="ghost" onClick={changes.cancel}>Stop loading files</Button></div>
+    : changes.cancelled ? <div className="source-list-limit"><p role="status">Stopped after {count(files.length)} files, so this list is not complete.</p><Button variant="secondary" onClick={changes.resume}>Continue loading files</Button></div>
+    : changes.error && files.length && !changes.changed ? <div role="alert" className="source-list-limit"><p>{changes.error} The list is not complete ({count(files.length)} files so far).</p><Button variant="secondary" onClick={changes.resume}>Retry</Button></div>
+    : changes.changed && files.length ? <div role="alert" className="source-list-limit"><p>{changes.error}</p></div> : null;
+  return <ModalFrame title={target.pr ? `Pull request #${target.pr}` : comparison?.commit.message.split('\n')[0] || 'Compare changes'} subtitle={`${target.repository} · ${originalBase?.slice(0, 9) ?? 'Empty tree'} → ${originalHead.slice(0, 9)}`} badge="DIFF" onClose={onClose}>
     <div className="source-diff-toolbar"><div className="source-segment" aria-label="Diff layout"><button type="button" aria-pressed={mode === 'split'} onClick={() => { setMode('split'); }}>Side by side</button><button type="button" aria-pressed={mode === 'unified'} onClick={() => { setMode('unified'); }}>Unified</button></div><label className="source-find"><Search size={14} /><input aria-label="Find in diff" placeholder="Find in diff…" value={find} onChange={event => { setFind(event.target.value); }} /></label><span>{matches.length} {find ? (matches.length === 1 ? 'matching line' : 'matching lines') : (matches.length === 1 ? 'change group' : 'change groups')}</span><Button size="sm" variant="ghost" aria-label="Previous match or change" disabled={!matches.length} onClick={() => { jump(-1); }}><ArrowUp size={14} /></Button><Button size="sm" variant="ghost" aria-label="Next match or change" disabled={!matches.length} onClick={() => { jump(1); }}><ArrowDown size={14} /></Button><Button size="sm" variant="ghost" onClick={() => { setSwapped(value => !value); }}><ArrowLeftRight size={14} />Swap</Button><Button size="sm" variant="secondary" disabled={!file} onClick={() => { setTime(true); }}><History size={14} />Time-lapse</Button></div>
-    <div className="source-diff-layout"><aside className="source-changed-files"><h3>Changed files <span>{files.length}</span></h3><input aria-label="Filter changed files" placeholder="Filter files…" value={filter} onChange={event => { setFilter(event.target.value); }} />{files.filter(item => `${item.path} ${item.previous_path ?? ''}`.toLowerCase().includes(filter.toLowerCase())).map(item => <button type="button" key={item.path} aria-pressed={file?.path === item.path} onClick={() => { setSelected(item.path); }}><FileCode size={14} /><span>{item.path}<small>{item.status}{item.previous_path ? ` ← ${item.previous_path}` : ''}</small></span><small className="source-file-count">{target.file && !rows ? '—' : `+${count(item, 'additions')} −${count(item, 'deletions')}`}</small></button>)}
-      {!listing.active && metadata.data?.next_page && !contextError ? <Button variant="ghost" disabled={metadata.loading} onClick={() => { setPage(metadata.data!.next_page!); }}>More files</Button> : null}
-      {githubLimit ? <div className="source-list-limit"><p>GitHub lists at most 3,000 changed files for one change, so this list may be incomplete.</p><Button variant="secondary" disabled={!pinned.current || Boolean(contextError)} onClick={listing.start}>Load the complete list</Button></div> : null}
-      {listing.active ? <div className="source-list-limit"><p>Complete list from comparing the two trees. Line counts and renames are not available here.{listing.partial ? ' GitHub returned a partial listing for a directory, so files may still be missing.' : ''}</p>{listing.next ? <Button variant="ghost" disabled={listing.loading} onClick={listing.more}>{listing.loading ? 'Loading files…' : 'More files'}</Button> : listing.loading ? <p role="status">Loading files…</p> : null}</div> : null}
+    <div className="source-diff-layout"><aside ref={fileAside} className="source-changed-files"><h3>Changed files <span>{count(files.length)}{changes.loading && !target.file ? '+' : ''}</span></h3><input aria-label="Filter changed files" placeholder="Filter files…" value={filter} onChange={event => { setFilter(event.target.value); }} />
+      {listStatus}
+      {changes.compared ? <div className="source-list-limit"><p>GitHub lists at most 3,000 changed files. The rest were found by comparing the two trees, so their line counts and renames are not available (—).{changes.incomplete ? ' GitHub returned a partial listing for a directory, so files may still be missing.' : ''}</p></div> : null}
+      {needle && !shownFiles.length && !changes.loading ? <p className="source-list-limit" role="status">No changed file matches the filter{changes.cancelled || changes.error ? ' among the files loaded so far' : ''}.</p> : null}
+      <ChangedFileList files={shownFiles} selected={file?.path} onSelect={setSelected} counts={fileCount} scroller={fileAside} />
     </aside><section className="source-diff-pane"><div className="source-file-heading"><strong>{file?.path ?? 'Choose a file'}</strong><label><input type="checkbox" checked={showAll} onChange={event => { setShowAll(event.target.checked); }} />Show all lines</label></div>
       {file?.previous_path ? <p className="source-caption">Renamed from <a href={`/search?${new URLSearchParams({ repository: target.repository, path: file.previous_path, tab: 'history', path_kind: 'file', source_ref: originalBase ?? '' })}`}>{file.previous_path}</a></p> : null}
-      {failure ? <div role="alert" className="source-notice">{failure}{!contextError ? <Button variant="secondary" onClick={retry}>Retry</Button> : null}</div>
-        : loadingFiles ? <p role="status" className="source-notice">Loading file versions…{progressText([beforeState, afterState])}<Button variant="ghost" onClick={() => { beforeState.cancel(); afterState.cancel(); }}>Cancel</Button></p>
+      {failure ? <div role="alert" className="source-notice">{failure}{!changes.changed ? <Button variant="secondary" onClick={retry}>Retry</Button> : null}</div>
+        : loadingFiles ? <p role="status" className="source-notice">Loading file versions…{progressText([beforeState, afterState])}{waitText(beforeState.waitingMs ?? afterState.waitingMs)}<Button variant="ghost" onClick={() => { beforeState.cancel(); afterState.cancel(); }}>Cancel</Button></p>
         : diff.computing ? <p role="status" className="source-notice">Comparing lines…<Button variant="ghost" onClick={diff.cancel}>Cancel</Button></p>
         : cancelledLoad ? <div role="status" className="source-notice">The comparison was cancelled.<Button variant="secondary" onClick={retry}>Retry</Button></div>
         : busy ? <p role="status" className="source-notice">Loading file versions…</p> : null}
-      {!busy && !failure && metadata.data && !files.length ? <div className="source-empty"><FileCode size={28} /><h3>No changed files</h3><p>This revision has no file changes to compare.</p></div> : null}
+      {!busy && !failure && !changes.loading && comparison && !files.length ? <div className="source-empty"><FileCode size={28} /><h3>No changed files</h3><p>This revision has no file changes to compare.</p></div> : null}
       {!failure && unavailable ? <div className="source-empty"><FileCode size={28} /><h3>Text comparison unavailable</h3><p>{before?.reason ?? after?.reason ?? 'This file cannot be compared as text.'}</p></div> : null}
       {!busy && !failure && rows ? <DiffRows rows={rows} items={items} windowed={windowed} scroller={scroller} mode={mode} find={find} left={left} right={right} lineText={lineText} onExpand={() => { setShowAll(true); }} labels={{ before: `BEFORE · ${(swapped ? originalHead : originalBase)?.slice(0, 9) ?? 'Empty tree'}${before?.status === 'missing' ? ' · Path absent' : ''}`, after: `AFTER · ${(swapped ? originalBase : originalHead)?.slice(0, 9) ?? 'Empty tree'}${after?.status === 'missing' ? ' · Path absent' : ''}` }}
         empty={allEqual ? (beforeText === afterText ? 'No differences between these versions.' : 'These versions differ only in the newline at the end of the file.') : null}
         caption={`${before?.text && !before.text.endsWith('\n') ? 'Before: no newline at EOF. ' : ''}${after?.text && !after.text.endsWith('\n') ? 'After: no newline at EOF. ' : ''}${changedRows} changed ${changedRows === 1 ? 'row' : 'rows'} · Revisions stay pinned while you inspect.${diff.result?.approximate ? ' The exact line alignment exceeded its time budget, so an approximate alignment is shown: every line is present, but some changes may be grouped differently than Git would group them.' : ''}`} /> : null}
     </section></div>
-    {metadata.data?.pull_requests_unavailable ? <p className="source-caption">PR context is temporarily unavailable. The source comparison remains available.</p> : null}
-    {metadata.data?.pull_requests.length ? <details className="source-pr-context"><summary>Related pull requests · {metadata.data.pull_requests.length}</summary>{metadata.data.pull_requests.map(pr => <article key={pr.number}><a href={`/pr/${target.repository}/${pr.number}`}>#{pr.number} {pr.title}</a><pre>{pr.body || 'No description.'}</pre></article>)}</details> : null}
+    {comparison?.pull_requests_unavailable ? <p className="source-caption">PR context is temporarily unavailable. The source comparison remains available.</p> : null}
+    {comparison?.pull_requests.length ? <details className="source-pr-context"><summary>Related pull requests · {comparison.pull_requests.length}</summary>{comparison.pull_requests.map(pr => <article key={pr.number}><a href={`/pr/${target.repository}/${pr.number}`}>#{pr.number} {pr.title}</a><pre>{pr.body || 'No description.'}</pre></article>)}</details> : null}
     {time && file ? <TimeLapseModal repository={target.repository} path={file.path} revision={originalHead} onClose={() => { setTime(false); }} /> : null}
   </ModalFrame>;
 }
@@ -201,30 +207,62 @@ function DiffRows({ rows, items, windowed, scroller, mode, find, left, right, li
   return <><div className="source-revision-headings"><span>{labels.before}</span><span>{labels.after}</span></div><div ref={scroller} className="source-code-scroll" tabIndex={0} role="region" aria-label="File diff"><table className={`source-diff-table source-diff-table--${mode}${windowed.virtual ? ' source-virtual' : ''}`} {...(windowed.virtual ? { 'aria-rowcount': items.length + 1 } : {})}>{mode === 'split' ? <colgroup><col style={{ width: 44 }} /><col style={{ width: 'calc(50% - 44px)' }} /><col style={{ width: 44 }} /><col style={{ width: 'calc(50% - 44px)' }} /></colgroup> : null}<thead className="ui-sr-only"><tr><th scope="col">Before line</th><th scope="col">{mode === 'split' ? 'Before source' : 'After line'}</th><th scope="col">{mode === 'split' ? 'After line' : 'Source'}</th><th scope="col">After source</th></tr></thead><tbody><Pad height={windowed.padTop} columns={4} />{rendered}<Pad height={windowed.padBottom} columns={4} /></tbody></table>{empty ? <p className="source-notice">{empty}</p> : null}</div><p className="source-caption">{caption}</p></>;
 }
 
-/** How far back the line analysis reaches from the selected revision (CR-132 — beyond the old fixed 30). */
-const ANALYSIS_RANGES = [{ value: '30', label: 'Last 30 revisions' }, { value: '100', label: 'Last 100 revisions' }, { value: '300', label: 'Last 300 revisions' }, { value: 'all', label: 'All loaded revisions' }] as const;
+/**
+ * How far back the line analysis reaches from the selected revision. 30·100·300 are quick presets (CR-132); none is a
+ * maximum — "All loaded revisions" covers what the dialog has read and "All history" (CR-138) reads the rest of the
+ * path's history first, to its first revision.
+ */
+const ANALYSIS_RANGES = [{ value: '30', label: 'Last 30 revisions' }, { value: '100', label: 'Last 100 revisions' }, { value: '300', label: 'Last 300 revisions' }, { value: 'all', label: 'All loaded revisions' }, { value: 'history', label: 'All history' }] as const;
 type AnalysisRange = (typeof ANALYSIS_RANGES)[number]['value'];
 const FULL_SHA = /^[0-9a-f]{40}$/i;
+/** Above this many revisions, "All history" says how many file versions it will read and waits for a second click. */
+const CONFIRM_ABOVE = 1000;
+/** Size of one revision row once the list is virtualized: height in the column layout, width (180px + 6px gap) in the narrow row layout. */
+const REVISION_ROW_HEIGHT = 84; const REVISION_ROW_WIDTH = 186;
+
+/** The dialog's own copy of the path's older history pages (CR-132), read one page or — for "All history" — all of them. */
+interface OlderHistory { readonly commits: SourceCommit[]; readonly next: number | null; readonly touched: boolean; readonly loading: boolean; readonly all: boolean; readonly error: string; readonly cancelled: boolean; readonly waitingMs: number | null }
 
 export function TimeLapseModal({ repository, path, revision, initialCommits, nextPage = null, onClose }: { repository: string; path: string; revision: string; initialCommits?: SourceCommit[]; nextPage?: number | null; onClose: () => void }) {
   const history = useSource<SourceHistory>(initialCommits ? null : sourceUrl(repository, 'history', { ref: revision, path }));
   // CR-132: older revisions load inside the dialog, pinned to the commit SHA the first page resolved.
   const pinnedRevision = history.data?.revision ?? (FULL_SHA.test(revision) ? revision : null);
-  const [older, setOlder] = useState<{ commits: SourceCommit[]; next: number | null; touched: boolean; loading: boolean; error: string }>({ commits: [], next: null, touched: false, loading: false, error: '' });
+  const [older, setOlder] = useState<OlderHistory>({ commits: [], next: null, touched: false, loading: false, all: false, error: '', cancelled: false, waitingMs: null });
+  const olderRef = useRef(older); olderRef.current = older;
   const olderController = useRef<AbortController | null>(null);
   useEffect(() => () => { olderController.current?.abort(); }, []);
   const firstNext = initialCommits ? (nextPage ?? null) : (history.data?.next_page ?? null);
   const next = older.touched ? older.next : firstNext;
-  const newestFirst = useMemo(() => { const seen = new Set<string>(); return [...(initialCommits ?? history.data?.commits ?? []), ...older.commits].filter(commit => (seen.has(commit.sha) ? false : (seen.add(commit.sha), true))); }, [initialCommits, history.data, older.commits]);
+  const firstPage = useMemo(() => initialCommits ?? history.data?.commits ?? [], [initialCommits, history.data]);
+  const newestFirst = useMemo(() => { const seen = new Set<string>(); return [...firstPage, ...older.commits].filter(commit => (seen.has(commit.sha) ? false : (seen.add(commit.sha), true))); }, [firstPage, older.commits]);
   const commits = useMemo(() => [...newestFirst].reverse(), [newestFirst]);
-  function loadOlder() {
-    if (next === null || pinnedRevision === null) return;
+  /**
+   * Reads older history pages: one page, or (`all`) every page to the path's first revision. Resolves the older commits
+   * when the history is complete and `null` when it stopped (cancel, failure, or a single page with more to come).
+   */
+  const readOlder = useCallback(async (all: boolean): Promise<SourceCommit[] | null> => {
+    const start = olderRef.current;
+    let cursor = start.touched ? start.next : firstNext;
+    if (cursor === null || pinnedRevision === null) return cursor === null ? start.commits : null;
     olderController.current?.abort(); const abort = new AbortController(); olderController.current = abort;
-    setOlder(value => ({ ...value, loading: true, error: '' }));
-    fetchSource<SourceHistory>(sourceUrl(repository, 'history', { ref: pinnedRevision, path, page: next }), abort.signal)
-      .then(pageData => { if (!abort.signal.aborted) setOlder(value => ({ commits: [...value.commits, ...pageData.commits], next: pageData.next_page, touched: true, loading: false, error: '' })); })
-      .catch((error: unknown) => { if (!abort.signal.aborted) setOlder(value => ({ ...value, loading: false, error: error instanceof Error ? error.message : 'Unable to load older revisions.' })); });
-  }
+    let collected = start.commits;
+    const publish = (change: Partial<OlderHistory>): void => { if (!abort.signal.aborted) setOlder(value => ({ ...value, ...change })); };
+    publish({ loading: true, all, error: '', cancelled: false, waitingMs: null });
+    try {
+      do {
+        const page: SourceHistory = await fetchSourceRetrying<SourceHistory>(sourceUrl(repository, 'history', { ref: pinnedRevision, path, page: cursor }), abort.signal, { onWait: (ms) => { publish({ waitingMs: ms }); } });
+        if (page.revision !== pinnedRevision) throw new Error('The history moved while it was loading. Close and reopen Time-lapse.');
+        collected = [...collected, ...page.commits]; cursor = page.next_page;
+        publish({ commits: collected, next: cursor, touched: true, loading: all && cursor !== null, waitingMs: null });
+      } while (all && cursor !== null);
+      publish({ loading: false });
+      return cursor === null ? collected : null;
+    } catch (error) {
+      if (!abort.signal.aborted) publish({ loading: false, waitingMs: null, error: error instanceof Error ? error.message : 'Unable to load older revisions.' });
+      return null;
+    }
+  }, [firstNext, pinnedRevision, repository, path]);
+  const stopOlder = useCallback(() => { olderController.current?.abort(); setOlder(value => (value.loading ? { ...value, loading: false, cancelled: true, waitingMs: null } : value)); }, []);
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
   const found = selectedSha === null ? -1 : commits.findIndex(commit => commit.sha === selectedSha);
   const currentIndex = found >= 0 ? found : commits.length - 1; const selected = commits[currentIndex];
@@ -232,6 +270,8 @@ export function TimeLapseModal({ repository, path, revision, initialCommits, nex
   const file = useFileText(repository, selected ? path : null, selected?.sha ?? null, 180);
   const [contextOpen, setContextOpen] = useState(false); const context = useSource<SourceComparison>(contextOpen && selected ? sourceUrl(repository, 'diff', { commit: selected.sha, related: 'all' }) : null, 180);
   const trace = useTrace(); const [range, setRange] = useState<AnalysisRange>('30');
+  /** "All history" found this many revisions and waits for the reader to confirm reading them all. */
+  const [confirm, setConfirm] = useState<readonly string[] | null>(null);
   const [line, setLine] = useState<number | null>(null); const [needle, setNeedle] = useState('');
   const codePane = useRef<HTMLDivElement>(null);
   /** The line the keyboard moved to — only keyboard moves take focus; other jumps (line history, revision change) only scroll. */
@@ -243,16 +283,31 @@ export function TimeLapseModal({ repository, path, revision, initialCommits, nex
   useEffect(() => { if (line !== null && !file.loading) scrollToRow(codePane.current, offsets, line); }, [line, file.loading, selected?.sha, offsets]);
   // A keyboard move lands one line away, inside the rendered slice; focus it once it is in the DOM.
   useEffect(() => { if (line !== null && keyboardLine.current === line) { const button = codePane.current?.querySelector<HTMLElement>(`[data-source-line="${line}"] button`); if (button) { button.focus({ preventScroll: true }); keyboardLine.current = null; } } }, [line, windowed.start, windowed.end]);
-  function analyze() {
+  async function analyze() {
     if (currentIndex < 0) return;
-    const span = range === 'all' ? currentIndex + 1 : Number(range);
-    trace.run({ repository, path, revisions: commits.slice(Math.max(0, currentIndex - span + 1), currentIndex + 1).map(commit => commit.sha) });
+    setConfirm(null);
+    if (range !== 'history') {
+      const span = range === 'all' ? currentIndex + 1 : Number(range);
+      trace.run({ repository, path, revisions: commits.slice(Math.max(0, currentIndex - span + 1), currentIndex + 1).map(commit => commit.sha) });
+      return;
+    }
+    const target = selected?.sha;
+    const olderCommits = await readOlder(true);
+    if (olderCommits === null || target === undefined) return;
+    // The whole history, oldest first, up to the selected revision.
+    const seen = new Set<string>();
+    const all = [...firstPage, ...olderCommits].filter(commit => (seen.has(commit.sha) ? false : (seen.add(commit.sha), true))).reverse();
+    const upTo = all.findIndex(commit => commit.sha === target);
+    if (upTo < 0) return;
+    const revisions = all.slice(0, upTo + 1).map(commit => commit.sha);
+    if (revisions.length > CONFIRM_ABOVE) setConfirm(revisions);
+    else trace.run({ repository, path, revisions });
   }
   const lineage = trace.result?.lineage ?? null;
   const revisionIndex = lineage && selected ? lineage.revisions.indexOf(selected.sha) : -1;
-  const nodes = revisionIndex >= 0 ? lineage!.lineNodes[revisionIndex] : undefined;
+  const nodes = useMemo(() => (lineage && revisionIndex >= 0 ? nodesAt(lineage, revisionIndex) : undefined), [lineage, revisionIndex]);
   const heat = (index: number) => (nodes && lineage ? Math.min(4, (lineage.nodeDepth[nodes[index] ?? -1] ?? 1) - 1) : 0);
-  const events = line === null || revisionIndex < 0 ? [] : lineEvents(lineage!, revisionIndex, line);
+  const events = line === null || revisionIndex < 0 || !lineage ? [] : lineEvents(lineage, revisionIndex, line, nodes);
   const skipped = trace.result?.skipped ?? [];
   const summary = lineage ? `${lineage.revisions.length} revisions analyzed.${skipped.length ? ` ${skipped.length} ${skipped.length === 1 ? 'revision was' : 'revisions were'} skipped because ${skipped.length === 1 ? 'it is' : 'they are'} not text (${skipped.slice(0, 3).map(item => `${item.sha.slice(0, 9)}: ${item.reason}`).join('; ')}${skipped.length > 3 ? '; …' : ''}).` : ''}${lineage.approximatePairs ? ` ${lineage.approximatePairs} adjacent ${lineage.approximatePairs === 1 ? 'pair was' : 'pairs were'} aligned approximately.` : ''} ` : '';
   const rendered: ReactNode[] = [];
@@ -260,17 +315,40 @@ export function TimeLapseModal({ repository, path, revision, initialCommits, nex
     const text = content[i]!;
     rendered.push(<tr key={i} data-source-line={i} {...(windowed.virtual ? { 'aria-rowindex': i + 2 } : {})} className={`${line === i ? 'source-selected-line' : ''} source-heat-${heat(i)}`}><td className="source-line-number"><button type="button" aria-label={`Inspect line ${i + 1}`} aria-pressed={line === i} tabIndex={line === i || (line === null && i === windowed.start) ? 0 : -1} onKeyDown={event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const next = Math.max(0, Math.min(content.length - 1, i + (event.key === 'ArrowDown' ? 1 : -1))); keyboardLine.current = next; setLine(next); } }} onClick={() => { setLine(i); }}>{i + 1}</button></td><td onClick={() => { setLine(i); }}><code>{highlight(text, needle)}</code></td></tr>);
   }
+  // CR-138: a long revision list is virtualized too — a column on wide screens, a row on narrow ones (newest first).
+  const narrow = useNarrow();
+  const revisionPane = useRef<HTMLElement>(null);
+  const revisionStart = useRef<HTMLDivElement>(null);
+  const revisionSize = useCallback(() => (narrow ? REVISION_ROW_WIDTH : REVISION_ROW_HEIGHT), [narrow]);
+  const revisionOffsets = useOffsets(commits.length, revisionSize);
+  const revisionWindow = useVirtualWindow(revisionPane, revisionOffsets, narrow ? 'x' : 'y', revisionStart);
+  const revisionButtons: ReactNode[] = [];
+  for (let position = revisionWindow.start; position < revisionWindow.end; position++) {
+    const i = commits.length - 1 - position; const commit = commits[i]!;
+    revisionButtons.push(<button type="button" key={commit.sha} aria-pressed={i === currentIndex} onClick={() => { setLine(null); select(i); }}><code>{commit.sha.slice(0, 9)}</code><strong>{commit.message.split('\n')[0]}</strong><small>{commit.author} · {commit.date ? formatDate(commit.date, { label: true }) : 'Unknown date'}</small></button>);
+  }
+  const spacer = (size: number, ref?: RefObject<HTMLDivElement | null>): ReactNode => (size > 0 || ref ? <div ref={ref} aria-hidden="true" className="source-virtual-spacer" style={narrow ? { width: size, flex: 'none' } : { height: size }} /> : null);
+  const progress = trace.progress;
+  const traceStatus = trace.running && progress
+    ? <p role="status" className="source-notice">{progress.loaded < progress.total ? `Loading revision ${count(Math.min(progress.total, progress.loaded + 1))} / ${count(progress.total)} · ` : ''}Analyzing revision {count(progress.done)} / {count(progress.total)}…{progress.skipped ? ` ${count(progress.skipped)} skipped (not text).` : ''}{waitText(progress.waitingMs)}</p>
+    : null;
+  const stoppedAt = trace.stopped ? `revision ${count(trace.stopped.partial.next + 1)} of ${count(trace.stopped.input.revisions.length)}` : '';
+  const historyStatus = older.loading && older.all ? <p role="status" className="source-notice">Loading history… {count(commits.length)} revisions so far.{waitText(older.waitingMs)}<Button variant="ghost" onClick={stopOlder}>Cancel</Button></p>
+    : older.cancelled ? <p role="status" className="source-notice">Loading the history was cancelled after {count(commits.length)} revisions.<Button variant="ghost" onClick={() => { void analyze(); }}>Continue</Button></p> : null;
   return <ModalFrame title={path} subtitle={`${repository} · Revision-aware file history`} badge="TIME-LAPSE" onClose={onClose}>
     <div className="source-time-toolbar"><Button variant="ghost" aria-label="Previous file revision" disabled={currentIndex <= 0} onClick={() => { setLine(null); select(currentIndex - 1); }}><ChevronLeft size={17} /></Button><Slider.Root aria-label="File revision" min={0} max={Math.max(1, commits.length - 1)} step={1} value={[Math.max(0, currentIndex)]} disabled={commits.length < 2} onValueChange={values => { setLine(null); select(values[0] ?? 0); }} className="source-slider"><Slider.Track><Slider.Range /></Slider.Track><Slider.Thumb aria-label="File revision" aria-valuetext={selected ? `Revision ${currentIndex + 1} of ${commits.length}: ${selected.sha.slice(0, 9)}` : 'No revisions'} /></Slider.Root><Button variant="ghost" aria-label="Next file revision" disabled={currentIndex >= commits.length - 1} onClick={() => { setLine(null); select(currentIndex + 1); }}><ChevronRight size={17} /></Button><span>{Math.max(0, currentIndex + 1)} / {commits.length}</span>
-      <label className="source-analysis-range"><span className="ui-sr-only">Analysis range</span><select aria-label="Analysis range" value={range} disabled={trace.running} onChange={event => { setRange(event.target.value as AnalysisRange); }}>{ANALYSIS_RANGES.map(option => <option key={option.value} value={option.value}>{option.value === 'all' ? `All loaded revisions (${Math.max(0, currentIndex + 1)})` : option.label}</option>)}</select></label>
-      {trace.running ? <Button variant="secondary" onClick={trace.cancel}>Cancel analysis</Button> : <Button variant="secondary" disabled={!selected || file.loading || file.file?.status !== 'text'} onClick={analyze}>Analyze line history</Button>}<Button variant="ghost" aria-pressed={contextOpen} onClick={() => { setContextOpen(value => !value); }}>Related PRs</Button></div>
-    {next !== null ? <div className="source-caption">{older.loading ? <span role="status">Loading older revisions…</span> : <Button size="sm" variant="ghost" disabled={pinnedRevision === null} onClick={loadOlder}>Load older revisions</Button>} {commits.length} revisions loaded. Older revisions of this path are available.</div> : older.touched ? <p className="source-caption">All {commits.length} revisions of this path are loaded.</p> : null}
-    {trace.running && trace.progress ? <p role="status" className="source-notice">Analyzing revision {trace.progress.done} of {trace.progress.total}…{trace.progress.skipped ? ` ${trace.progress.skipped} skipped (not text).` : ''}</p> : null}
-    {trace.cancelled ? <p role="status" className="source-notice">The line analysis was cancelled.{trace.result ? ' The previous analysis is still shown.' : ''}</p> : null}
-    {history.error || trace.error || older.error ? <div role="alert" className="source-notice">{history.error || trace.error || older.error}<Button variant="ghost" onClick={older.error ? loadOlder : history.reload}>{older.error ? 'Retry older revisions' : 'Retry history'}</Button></div> : null}
-    <div className="source-time-layout"><aside className="source-revisions"><h3>Revisions</h3>{commits.map((commit, i) => ({ commit, i })).reverse().map(({ commit, i }) => <button type="button" key={commit.sha} aria-pressed={i === currentIndex} onClick={() => { setLine(null); select(i); }}><code>{commit.sha.slice(0, 9)}</code><strong>{commit.message.split('\n')[0]}</strong><small>{commit.author} · {commit.date ? formatDate(commit.date, { label: true }) : 'Unknown date'}</small></button>)}</aside>
+      <label className="source-analysis-range"><span className="ui-sr-only">Analysis range</span><select aria-label="Analysis range" value={range} disabled={trace.running || older.loading} onChange={event => { setRange(event.target.value as AnalysisRange); setConfirm(null); }}>{ANALYSIS_RANGES.map(option => <option key={option.value} value={option.value}>{option.value === 'all' ? `All loaded revisions (${Math.max(0, currentIndex + 1)})` : option.label}</option>)}</select></label>
+      {trace.running ? <Button variant="secondary" onClick={trace.cancel}>Cancel analysis</Button> : <Button variant="secondary" disabled={!selected || file.loading || file.file?.status !== 'text' || older.loading} onClick={() => { void analyze(); }}>{range === 'history' ? 'Analyze all history' : 'Analyze line history'}</Button>}<Button variant="ghost" aria-pressed={contextOpen} onClick={() => { setContextOpen(value => !value); }}>Related PRs</Button></div>
+    {next !== null && !(older.loading && older.all) ? <div className="source-caption">{older.loading ? <span role="status">Loading older revisions…</span> : <Button size="sm" variant="ghost" disabled={pinnedRevision === null} onClick={() => { void readOlder(false); }}>Load older revisions</Button>} {commits.length} revisions loaded. Older revisions of this path are available{range === 'history' ? ' — All history reads them all' : ''}.</div> : older.touched && next === null ? <p className="source-caption">All {commits.length} revisions of this path are loaded.</p> : null}
+    {historyStatus}
+    {confirm ? <div role="status" className="source-notice">All history of this path has {count(confirm.length)} revisions up to the selected one. Analyzing them reads {count(confirm.length)} file versions from GitHub and may take a while; you can cancel at any time.<Button variant="secondary" onClick={() => { const revisions = confirm; setConfirm(null); trace.run({ repository, path, revisions }); }}>Analyze {count(confirm.length)} revisions</Button><Button variant="ghost" onClick={() => { setConfirm(null); }}>Not now</Button></div> : null}
+    {traceStatus}
+    {trace.cancelled ? <p role="status" className="source-notice">The line analysis was cancelled{stoppedAt ? ` at ${stoppedAt}` : ''}.{trace.result ? ' The previous analysis is still shown.' : ''}{trace.stopped ? <Button variant="ghost" onClick={trace.resume}>Continue analysis</Button> : null}</p> : null}
+    {history.error || older.error ? <div role="alert" className="source-notice">{history.error || older.error}<Button variant="ghost" onClick={older.error ? () => { void (older.all ? analyze() : readOlder(false)); } : history.reload}>{older.error ? 'Retry older revisions' : 'Retry history'}</Button></div> : null}
+    {trace.error ? <div role="alert" className="source-notice">{trace.stopped ? `Line analysis stopped at ${stoppedAt}: ` : ''}{trace.error}{trace.stopped ? <Button variant="ghost" onClick={trace.resume}>Continue analysis</Button> : null}</div> : null}
+    <div className="source-time-layout"><aside ref={revisionPane} className={`source-revisions${revisionWindow.virtual ? ' source-revisions--virtual' : ''}`}><h3>Revisions</h3>{spacer(revisionWindow.padTop, revisionStart)}{revisionButtons}{spacer(revisionWindow.padBottom)}</aside>
       <section className="source-time-code"><header><code>{selected?.sha.slice(0, 12) ?? (history.loading ? 'Loading…' : 'No revisions')}</code><label><Search size={13} /><input aria-label="Find in file" placeholder="Find in file…" value={needle} onChange={event => { setNeedle(event.target.value); }} /></label></header>
-        {file.loading || history.loading ? <p role="status" className="source-notice">Loading revision…{progressText([file])}{file.loading ? <Button variant="ghost" onClick={file.cancel}>Cancel</Button> : null}</p> : file.error ? <div role="alert" className="source-notice">{file.error}<Button variant="ghost" onClick={file.reload}>Retry</Button></div> : file.cancelled ? <div role="status" className="source-notice">Loading was cancelled.<Button variant="ghost" onClick={file.reload}>Retry</Button></div> : file.file?.status !== 'text' ? <p className="source-notice">{file.file?.reason ?? 'No file content available.'}</p> : <div ref={codePane} className="source-code-scroll" role="region" tabIndex={0} aria-label="File content">{content.length === 0 ? <p className="source-notice">This file is empty at this revision.</p> : null}<table className={`source-file-code${windowed.virtual ? ' source-virtual' : ''}`} {...(windowed.virtual ? { 'aria-rowcount': content.length + 1 } : {})}><thead className="ui-sr-only"><tr><th scope="col">Line</th><th scope="col">Source</th></tr></thead><tbody><Pad height={windowed.padTop} columns={2} />{rendered}<Pad height={windowed.padBottom} columns={2} /></tbody></table></div>}
+        {file.loading || history.loading ? <p role="status" className="source-notice">Loading revision…{progressText([file])}{waitText(file.waitingMs)}{file.loading ? <Button variant="ghost" onClick={file.cancel}>Cancel</Button> : null}</p> : file.error ? <div role="alert" className="source-notice">{file.error}<Button variant="ghost" onClick={file.reload}>Retry</Button></div> : file.cancelled ? <div role="status" className="source-notice">Loading was cancelled.<Button variant="ghost" onClick={file.reload}>Retry</Button></div> : file.file?.status !== 'text' ? <p className="source-notice">{file.file?.reason ?? 'No file content available.'}</p> : <div ref={codePane} className="source-code-scroll" role="region" tabIndex={0} aria-label="File content">{content.length === 0 ? <p className="source-notice">This file is empty at this revision.</p> : null}<table className={`source-file-code${windowed.virtual ? ' source-virtual' : ''}`} {...(windowed.virtual ? { 'aria-rowcount': content.length + 1 } : {})}><thead className="ui-sr-only"><tr><th scope="col">Line</th><th scope="col">Source</th></tr></thead><tbody><Pad height={windowed.padTop} columns={2} />{rendered}<Pad height={windowed.padBottom} columns={2} /></tbody></table></div>}
       </section><aside className="source-line-history"><h3>Line history {line === null ? '' : `· ${line + 1}`}</h3>{!lineage ? <p>Analyze line history, then select a line to follow its changes.</p> : revisionIndex < 0 ? <p>This revision is outside the analyzed range. Analyze again to include it.</p> : line === null ? <p>Select a line number in the file.</p> : <><p role="status">{events.length} observed versions of this line</p>{[...events].reverse().map((event, i) => <button type="button" key={`${event.sha}-${i}`} onClick={() => { const index = commits.findIndex(commit => commit.sha === event.sha); if (index >= 0) { select(index); setLine(event.line - 1); } }}><code>{event.sha.slice(0, 9)}</code><small>{event.kind === 'baseline' ? 'Present at range start' : event.kind === 'edited' ? 'Aligned replacement' : 'Added'}</small><pre>{displayLine(event.text)}</pre></button>)}</>}
         <div className="source-heat-legend" aria-label="Observed edit frequency"><span>Low</span>{[0, 1, 2, 3, 4].map(value => <i key={value} className={`source-heat-${value}`} aria-hidden="true" />)}<span>High</span></div><p className="source-line-disclaimer">{summary}Line correspondence is inferred from adjacent diffs, not authoritative blame. Earlier history and renamed paths may be outside this range.</p>
       </aside></div>

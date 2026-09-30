@@ -4,12 +4,14 @@ import { ChevronDown, ChevronRight, FileCode, Folder, FolderOpen, GitBranch, Ref
 import type { SourceEntry, SourceTree as TreeData } from '@prs/contracts';
 import { EMPTY_PATH_LIST, appendPaths, loadPaths, matchPaths, type PathList } from '../../lib/source-paths';
 import { fetchSource, sourceUrl, useSource } from './api';
+import { useAutoLoad } from './hooks';
 
 export interface PathSelection { path: string; kind: 'file' | 'directory'; revision: string }
 interface TreeProps { repository: string; branch: string; selectedPath: string; onSelect: (selection: PathSelection) => void }
 /**
  * CR-132: a directory is listed page by page (5,000 entries each, sorted by the server) instead of stopping at the first
- * 5,000. Later pages are requested by the listed tree's SHA, so they always belong to the same snapshot.
+ * 5,000. Later pages are requested by the listed tree's SHA, so they always belong to the same snapshot. CR-138: the next
+ * page loads when the reader scrolls to the end of the listed entries; the button stays for the keyboard.
  */
 function useMoreEntries(repository: string, first: TreeData | null) {
   const [state, setState] = useState<{ for: TreeData | null; entries: SourceEntry[]; next: number | null; loading: boolean; error: string }>({ for: null, entries: [], next: null, loading: false, error: '' });
@@ -29,8 +31,10 @@ function useMoreEntries(repository: string, first: TreeData | null) {
   return { entries: current.entries, more: first?.tree_sha !== undefined && current.next !== null, loading: current.loading, error: current.error, shown, total: first?.total ?? shown, loadMore };
 }
 function MoreEntries({ more }: { more: ReturnType<typeof useMoreEntries> }) {
+  const sentinel = useRef<HTMLLIElement>(null);
+  useAutoLoad(sentinel, more.more && !more.loading && !more.error, more.loadMore);
   if (!more.more && !more.error) return null;
-  return <li role="none" className="source-tree-note">{more.error ? <button type="button" onClick={more.loadMore}>Retry: {more.error}</button> : <button type="button" className="source-tree-more" disabled={more.loading} onClick={more.loadMore}>{more.loading ? 'Loading more entries…' : `Show more entries (${more.shown.toLocaleString('en-US')} of ${more.total.toLocaleString('en-US')})`}</button>}</li>;
+  return <li ref={sentinel} role="none" className="source-tree-note">{more.error ? <button type="button" onClick={more.loadMore}>Retry: {more.error}</button> : <button type="button" className="source-tree-more" disabled={more.loading} onClick={more.loadMore}>{more.loading ? 'Loading more entries…' : `Show more entries (${more.shown.toLocaleString('en-US')} of ${more.total.toLocaleString('en-US')})`}</button>}</li>;
 }
 function Node({ entry, revision, repository, selectedPath, onSelect }: Omit<TreeProps, 'branch'> & { entry: SourceEntry; revision: string }) {
   const [open, setOpen] = useState(false); const directory = entry.kind === 'directory';
@@ -53,7 +57,7 @@ function Node({ entry, revision, repository, selectedPath, onSelect }: Omit<Tree
 }
 /** How long typing pauses before a search runs (CR-133). */
 const SEARCH_DEBOUNCE_MS = 250;
-/** At most this many matches are drawn; typing more narrows the list. */
+/** Matches drawn at a time (CR-138: not a total — the next batch draws when the reader scrolls to the end of the results). */
 export const SEARCH_RESULT_LIMIT = 200;
 const count = (value: number) => value.toLocaleString('en-US');
 const matchesText = (value: number) => `${count(value)} ${value === 1 ? 'match' : 'matches'}`;
@@ -105,7 +109,12 @@ export function SourceTree(props: TreeProps) {
   const revision = root.data?.revision ?? null;
   const searching = query !== '' && revision !== null;
   const listing = usePathListing(props.repository, revision, searching);
-  const found = useMemo(() => matchPaths(listing.list, query, SEARCH_RESULT_LIMIT), [listing.list, query]);
+  const [shown, setShown] = useState(SEARCH_RESULT_LIMIT);
+  useEffect(() => { setShown(SEARCH_RESULT_LIMIT); }, [query, revision]);
+  const found = useMemo(() => matchPaths(listing.list, query, shown), [listing.list, query, shown]);
+  const moreResults = useRef<HTMLLIElement>(null);
+  const showMore = useCallback(() => { setShown((value) => value + SEARCH_RESULT_LIMIT); }, []);
+  useAutoLoad(moreResults, searching && found.total > found.matches.length, showMore);
   function move(event: KeyboardEvent<HTMLUListElement>) {
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const items = Array.from(tree.current?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? []);
@@ -129,7 +138,7 @@ export function SourceTree(props: TreeProps) {
     : listing.cancelled ? <p role="status" className="source-search-status">Listing stopped after {count(listed)} paths · {matchesText(found.total)} so far, so the results may be incomplete.<button type="button" onClick={listing.resume}>Continue listing</button></p>
     : !listing.done ? <p role="status" className="source-search-status">Listing files… {count(listed)} paths{listed > 0 ? ` · ${matchesText(found.total)} so far` : ''}<button type="button" onClick={listing.cancel}>Cancel</button></p>
     : found.total === 0 ? <p role="status" className="source-search-status">No files in this revision match &quot;{query}&quot;.</p>
-    : <p role="status" className="source-search-status">{matchesText(found.total)}{found.total > found.matches.length ? ` · showing the first ${count(found.matches.length)}, type more to narrow the list` : ''}</p>;
+    : <p role="status" className="source-search-status">{matchesText(found.total)}{found.total > found.matches.length ? ` · showing ${count(found.matches.length)}, more as you scroll` : ''}</p>;
   return <section className="source-tree" aria-label="Repository files">
     <header><strong>Files & folders</strong><button type="button" aria-label="Refresh file tree" disabled={root.loading} onClick={root.reload}><RefreshCw size={13} /></button></header>
     {root.data ? <p className="source-tree-ref"><GitBranch size={12} />{root.data.ref.slice(0, 35)}<code title={root.data.revision}>{root.data.revision.slice(0, 7)}</code></p> : null}
@@ -140,6 +149,7 @@ export function SourceTree(props: TreeProps) {
       <ul ref={results} className="source-search-results" aria-label="Matching files" onKeyDown={moveResults}>
         {found.matches.map(match => <li key={match.entry.path}><button type="button" className="source-search-result" title={match.entry.path} aria-current={props.selectedPath === match.entry.path ? 'true' : undefined}
           onClick={() => { props.onSelect({ path: match.entry.path, kind: 'file', revision: revision! }); }}><FileCode size={14} /><span><strong>{match.name}</strong><small>{match.parent === '' ? '/' : match.parent}</small></span>{match.entry.kind === 'symlink' ? <small className="source-search-kind">link</small> : null}</button></li>)}
+        {found.total > found.matches.length ? <li ref={moreResults}><button type="button" className="source-tree-more" onClick={showMore}>Show more matches ({count(found.matches.length)} of {count(found.total)})</button></li> : null}
       </ul></> : null}
     {root.data ? <><button type="button" className="source-tree-root" hidden={searching} onClick={() => { props.onSelect({ path: '', kind: 'directory', revision: root.data!.revision }); }}><FolderOpen size={14} />/ <span>All changes</span></button>
       {/* CR-133: the tree stays mounted while searching so its open folders are kept for when the search is cleared. */}

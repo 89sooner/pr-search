@@ -1,11 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileCode, Folder, GitCommitHorizontal, GitCompareArrows, History, RefreshCw } from 'lucide-react';
 import type { SourceHistoryCommit, SourceHistory as HistoryData } from '@prs/contracts';
 import { Badge, Banner, Button, CopyText } from '../ui';
 import { TimeText } from '../TimeText';
 import { sourceUrl, useSource } from './api';
 import { DiffModal, TimeLapseModal, type DiffTarget } from './SourceDialogs';
+import { useAutoLoad } from './hooks';
 
 export function SourceHistory({ repository, path, kind, revision, branch }: { repository: string; path: string; kind: string; revision: string; branch: string }) {
   const key = `${repository}|${path}|${revision}|${branch}`;
@@ -18,6 +19,11 @@ function HistoryBody({ repository, path, kind, revision, branch }: { repository:
   const [active, setActive] = useState<string | null>(null);
   useEffect(() => { if (response.data) { setPinned(response.data.revision); setCommits(previous => { if (page === 1) return response.data!.commits; const seen = new Set(previous.map(item => item.sha)); return [...previous, ...response.data!.commits.filter(item => !seen.has(item.sha))]; }); } }, [response.data, page]);
   const isFile = Boolean(path) && kind !== 'directory';
+  // CR-138: older commits load when the reader scrolls to the end of the table; the button stays for the keyboard.
+  const olderSentinel = useRef<HTMLDivElement>(null);
+  const nextPage = response.data?.next_page ?? null;
+  const loadOlder = useCallback(() => { if (nextPage !== null) setPage(nextPage); }, [nextPage]);
+  useAutoLoad(olderSentinel, nextPage !== null && !response.loading && !response.error, loadOlder);
   return <section className="source-history" aria-label="Path history" onKeyDown={event => {
     if ((event.target as HTMLElement).closest('input,textarea,select,[role="dialog"]')) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd' && active) { event.preventDefault(); event.stopPropagation(); setDiff({ repository, commit: active }); }
@@ -31,7 +37,7 @@ function HistoryBody({ repository, path, kind, revision, branch }: { repository:
     {response.data?.pull_requests_unavailable ? <p className="source-caption">PR link lookup is temporarily unavailable. Commit history remains available.</p> : null}
     <div className="source-history-table"><table><thead><tr><th scope="col"><span className="ui-sr-only">Compare</span></th><th scope="col">Revision</th><th scope="col">Change</th><th scope="col">Linked PRs</th><th scope="col">Author</th><th scope="col">Committed (KST)</th><th scope="col">Inspect</th></tr></thead><tbody>{commits.map(commit => <tr key={commit.sha} onMouseEnter={() => { setActive(commit.sha); }} onFocusCapture={() => { setActive(commit.sha); }}><td><input type="checkbox" aria-label={`Select ${commit.sha.slice(0, 7)} for comparison`} checked={selected.includes(commit.sha)} disabled={!isFile || (selected.length >= 2 && !selected.includes(commit.sha))} onChange={() => { setSelected(previous => previous.includes(commit.sha) ? previous.filter(sha => sha !== commit.sha) : [...previous, commit.sha]); }} /></td><td><CopyText value={commit.sha} copyLabel={`Copy full SHA ${commit.sha}`}><code title={commit.sha}>{commit.sha.slice(0, 9)}</code></CopyText></td><td><button type="button" className="source-history-title" onClick={() => { setDiff({ repository, commit: commit.sha }); }}>{commit.message.split('\n')[0]}</button></td><td>{commit.pull_request_numbers === null ? <span className="source-pr-pending">Pending</span> : commit.pull_request_numbers.length === 0 ? <span className="source-pr-empty">—</span> : <span className="source-pr-list">{commit.pull_request_numbers.map(number => <CopyText key={number} value={String(number)} copyLabel={`Copy PR #${number}`} className="source-pr-chip"><Badge tone="neutral">#{number}</Badge></CopyText>)}</span>}</td><td>{commit.author}</td><td><TimeText value={commit.date} dateOnly absent="Unknown" /></td><td><Button size="sm" variant="ghost" aria-label={`View diff for ${commit.sha.slice(0, 7)}`} onClick={() => { setDiff({ repository, commit: commit.sha }); }}><GitCompareArrows size={15} />Diff</Button></td></tr>)}</tbody></table></div>
     {!response.loading && !response.error && !commits.length ? <div className="source-empty"><History size={28} /><h2>No history for this path</h2><p>Choose another path or branch in the repository tree.</p></div> : null}
-    {response.data?.next_page ? <div className="source-load-more"><Button variant="secondary" disabled={response.loading} onClick={() => { setPage(response.data!.next_page!); }}>Load older commits</Button></div> : null}
+    {response.data?.next_page ? <div ref={olderSentinel} className="source-load-more"><Button variant="secondary" disabled={response.loading} onClick={loadOlder}>Load older commits</Button></div> : null}
     {diff ? <DiffModal target={diff} onClose={() => { setDiff(null); }} /> : null}
     {time ? <TimeLapseModal repository={repository} path={path} revision={pinned || branch} initialCommits={commits} nextPage={response.data?.next_page ?? null} onClose={() => { setTime(false); }} /> : null}
   </section>;

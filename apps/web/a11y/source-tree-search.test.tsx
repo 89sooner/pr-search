@@ -28,7 +28,7 @@ const PATHS: SourcePathEntry[] = [
   { path: 'src/link', kind: 'symlink' }, file('tests/config.h'), file('tests/run.sh'),
 ];
 
-interface Api { paths?: SourcePathEntry[]; pageSize?: number; incomplete?: boolean; holdAfterFirst?: boolean; failOnce?: string }
+interface Api { paths?: SourcePathEntry[]; pageSize?: number; incomplete?: boolean; holdAfterFirst?: boolean; failOnce?: string; transientOnce?: string }
 /** Directory listings of the fake tree, by path ('' = root). */
 const DIRECTORIES: Record<string, readonly (readonly [string, string])[]> = {
   '': [['deep', 'directory'], ['src', 'directory'], ['tests', 'directory'], ['README.md', 'file']],
@@ -38,7 +38,7 @@ const DIRECTORIES: Record<string, readonly (readonly [string, string])[]> = {
 /** Records every URL. Tree: `DIRECTORIES` (other folders are empty). `/paths`: `pageSize` paths per page. */
 function stubApi(api: Api) {
   const calls: string[] = [];
-  const state = { revision: HEAD, held: [] as (() => void)[], aborted: 0, failOnce: api.failOnce };
+  const state = { revision: HEAD, held: [] as (() => void)[], aborted: 0, failOnce: api.failOnce, transientOnce: api.transientOnce };
   vi.stubGlobal('fetch', (input: string, init?: RequestInit) => {
     calls.push(input);
     const url = new URL(input, 'http://localhost');
@@ -56,8 +56,13 @@ function stubApi(api: Api) {
       const start = after === null ? 0 : all.findIndex((entry) => entry.path === after) + 1;
       const page = all.slice(start, start + size);
       const body = { repository: REPO, revision: query.get('revision'), paths: page, next_after: start + size < all.length ? page.at(-1)!.path : null, incomplete: api.incomplete ?? false };
+      // A failure the page cannot wait out: GitHub asks to come back in an hour (CR-138 — a shorter wait is waited out).
       if (state.failOnce !== undefined && after === state.failOnce) {
         state.failOnce = undefined;
+        return Promise.resolve(new Response(JSON.stringify({ error: { code: 'SOURCE_RATE_LIMITED', message: 'GitHub is rate limited. Try again later.' } }), { status: 429, headers: { 'retry-after': '3600' } }));
+      }
+      if (state.transientOnce !== undefined && after === state.transientOnce) {
+        state.transientOnce = undefined;
         return Promise.resolve(new Response(JSON.stringify({ error: { code: 'SOURCE_UNAVAILABLE', message: 'Source data could not be loaded from GitHub. Please retry.' } }), { status: 502 }));
       }
       if (api.holdAfterFirst && after !== null) {
@@ -78,7 +83,8 @@ function view(onSelect: (selection: { path: string; kind: 'file' | 'directory'; 
   return render(<SourceTree repository={REPO} branch="main" selectedPath={selectedPath} onSelect={onSelect} />);
 }
 const searchBox = () => screen.getByPlaceholderText('Search files in this revision…');
-const results = () => within(screen.getByRole('list', { name: 'Matching files' })).queryAllByRole('button');
+/** The result buttons (not the "Show more matches" button at the end of the list, CR-138). */
+const results = () => within(screen.getByRole('list', { name: 'Matching files' })).queryAllByRole('button').filter((button) => button.classList.contains('source-search-result'));
 
 describe('CR-133 FR-SRC-001 Files & folders searches every path of the pinned revision', () => {
   it('FR-SRC-001 finds deep files and every file with the same name without opening a folder, reading the list once', async () => {
@@ -175,14 +181,19 @@ describe('CR-133 FR-SRC-001 Files & folders searches every path of the pinned re
     expect(await screen.findByText('1 match')).toBeInTheDocument();
   });
 
-  it('FR-SRC-001 draws at most 200 results, says how many there are, and names a partial GitHub listing', async () => {
+  it('CR-138 FR-SRC-001 draws 200 results at a time, says how many there are, draws the rest on request (or scroll), and names a partial GitHub listing', async () => {
     stubApi({ paths: Array.from({ length: 250 }, (_, index) => file(`mod/m${String(index).padStart(3, '0')}.ts`)), incomplete: true });
     const user = userEvent.setup();
     view();
     await screen.findByRole('treeitem', { name: 'src' });
     await user.type(searchBox(), 'mod');
-    expect(await screen.findByText('250 matches · showing the first 200, type more to narrow the list')).toBeInTheDocument();
+    expect(await screen.findByText('250 matches · showing 200, more as you scroll')).toBeInTheDocument();
     expect(results()).toHaveLength(200);
+    await user.click(screen.getByRole('button', { name: 'Show more matches (200 of 250)' }));
+    expect(await screen.findByText('250 matches')).toBeInTheDocument();
+    expect(results()).toHaveLength(250);
+    expect(results().at(-1)).toHaveAttribute('title', 'mod/m249.ts');
+    expect(screen.queryByRole('button', { name: /Show more matches/ })).not.toBeInTheDocument();
     expect(screen.getByText('GitHub returned a partial listing for a directory, so some files may be missing.')).toBeInTheDocument();
   });
 
@@ -193,10 +204,21 @@ describe('CR-133 FR-SRC-001 Files & folders searches every path of the pinned re
     await screen.findByRole('treeitem', { name: 'src' });
     await user.type(searchBox(), 'config');
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('Source data could not be loaded from GitHub. Please retry.');
+    expect(alert).toHaveTextContent('GitHub is rate limited. Try again later.');
     expect(screen.queryByText(/No files in this revision match/)).not.toBeInTheDocument();
     await user.click(within(alert).getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('3 matches')).toBeInTheDocument();
+    expect(pathCalls().map((params) => params.get('after'))).toEqual([null, 'src/a/config.h', 'src/a/config.h', 'src/link']);
+  });
+
+  it('CR-138 FR-SRC-001 a temporary GitHub failure is asked again for the same page by itself — no error, nothing read twice', async () => {
+    const { pathCalls } = stubApi({ pageSize: 3, transientOnce: 'src/a/config.h' });
+    const user = userEvent.setup();
+    view();
+    await screen.findByRole('treeitem', { name: 'src' });
+    await user.type(searchBox(), 'config');
+    expect(await screen.findByText('3 matches', undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(pathCalls().map((params) => params.get('after'))).toEqual([null, 'src/a/config.h', 'src/a/config.h', 'src/link']);
   });
 
@@ -206,7 +228,7 @@ describe('CR-133 FR-SRC-001 Files & folders searches every path of the pinned re
     view();
     await screen.findByRole('treeitem', { name: 'src' });
     await user.type(searchBox(), 'config');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Source data could not be loaded from GitHub. Please retry.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('GitHub is rate limited. Try again later.');
     await user.clear(searchBox());
     await user.type(searchBox(), 'main');
     expect(await screen.findByText('1 match')).toBeInTheDocument();

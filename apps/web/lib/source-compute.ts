@@ -197,11 +197,27 @@ function buildRows(matchB: Int32Array, afterLength: number): Int32Array {
 
 export type LineageKind = 'baseline' | 'added' | 'edited';
 export interface LineEvent { sha: string; line: number; text: string; kind: LineageKind }
+
+/**
+ * CR-138: the node of every line of every analyzed revision is not kept as one array per revision (lines × revisions
+ * cells — a 100,000-line file stopped at about 1,500 revisions). A full node array is kept every CHECKPOINT_EVERY
+ * revisions; each revision in between keeps only its runs against the previous one, so memory follows what changed.
+ * `nodesAt` rebuilds any revision from the checkpoint before it.
+ */
+export const CHECKPOINT_EVERY = 64;
+/** Runs are 4 ints: kind, first line (0-based) at this revision, length, and the source — the previous revision's line for an equal run, the first node for a new run. */
+const RUN_EQUAL = 0; const RUN_NEW = 1;
+const NO_RUNS = new Int32Array(0);
+
 export interface Lineage {
   /** Analyzed revisions, oldest first (only the ones added with addRevision). */
   readonly revisions: readonly string[];
-  /** Per analyzed revision (same index as `revisions`): the lineage node of each line (0-based line index). */
-  readonly lineNodes: readonly Int32Array[];
+  /** Line count of each analyzed revision (same index as `revisions`). */
+  readonly lineCounts: Int32Array;
+  /** Node array of revision k·CHECKPOINT_EVERY at index k. Never mutate: `nodesAt` may return these arrays themselves. */
+  readonly checkpoints: readonly Int32Array[];
+  /** Per analyzed revision: its runs against the previous revision (empty for a checkpoint revision). */
+  readonly runs: readonly Int32Array[];
   readonly nodeParent: Int32Array;   // -1 = none
   readonly nodeRevision: Int32Array; // index into `revisions`
   readonly nodeLine: Int32Array;     // 1-based line number at that revision
@@ -212,66 +228,132 @@ export interface Lineage {
   readonly approximatePairs: number;
 }
 
+function applyRuns(previous: Int32Array, runs: Int32Array, length: number): Int32Array {
+  const next = new Int32Array(length);
+  for (let r = 0; r < runs.length; r += 4) {
+    const start = runs[r + 1]!; const count = runs[r + 2]!; const source = runs[r + 3]!;
+    if (runs[r] === RUN_EQUAL) next.set(previous.subarray(source, source + count), start);
+    else for (let k = 0; k < count; k++) next[start + k] = source + k;
+  }
+  return next;
+}
+
+/** The lineage node of each line (0-based) of analyzed revision `revision`, or undefined out of range. Do not mutate the result. */
+export function nodesAt(lineage: Lineage, revision: number): Int32Array | undefined {
+  if (!Number.isInteger(revision) || revision < 0 || revision >= lineage.revisions.length) return undefined;
+  const checkpoint = Math.floor(revision / CHECKPOINT_EVERY);
+  let nodes = lineage.checkpoints[checkpoint];
+  if (nodes === undefined) return undefined;
+  for (let r = checkpoint * CHECKPOINT_EVERY + 1; r <= revision; r++) nodes = applyRuns(nodes, lineage.runs[r]!, lineage.lineCounts[r]!);
+  return nodes;
+}
+
 const KIND_BASELINE = 0; const KIND_ADDED = 1; const KIND_EDITED = 2;
 const KIND_NAMES: readonly LineageKind[] = ['baseline', 'added', 'edited'];
 const INITIAL_NODES = 1024;
+/** Bytes kept per node besides its text: five typed-array cells and the text slot. */
+const NODE_BYTES = 4 * 4 + 1 + 8;
 
 /** A line split from a revision text is a slice that keeps the whole text alive in V8; a JSON round trip stores an exact, independent copy. */
 function detach(text: string): string { return JSON.parse(JSON.stringify(text)) as string; }
+/** Rough heap cost of a string: two bytes per UTF-16 unit plus the object header. */
+function textBytes(text: string): number { return 2 * text.length + 32; }
 
-/** Adjacent replacement rows are aligned candidates, not authoritative Git blame (same model as source-analysis.ts traceLines). */
+/** Adjacent replacement rows are aligned candidates, not authoritative Git blame (same model as traceLines in the source-analysis test oracle). */
 export class LineageBuilder {
   private readonly budget: DiffBudget;
-  private readonly revisions: string[] = [];
-  private readonly lineNodes: Int32Array[] = [];
-  private readonly texts: string[] = [];
+  private revisions: string[] = [];
+  private lineCounts: number[] = [];
+  private checkpoints: Int32Array[] = [];
+  private runs: Int32Array[] = [];
+  private texts: string[] = [];
   private parent = new Int32Array(INITIAL_NODES);
   private revision = new Int32Array(INITIAL_NODES);
   private line = new Int32Array(INITIAL_NODES);
   private depth = new Int32Array(INITIAL_NODES);
   private kind = new Uint8Array(INITIAL_NODES);
   private count = 0;
-  /** Only the previous revision's lines are kept; older texts live on solely in the node texts. */
+  /** Only the previous revision's lines and nodes are kept whole; older texts live on solely in the node texts. */
   private previous: readonly string[] = [];
+  private previousNodes: Int32Array = new Int32Array(0);
   private approximatePairs = 0;
+  private bytes = 0;
 
   constructor(budget: DiffBudget = EXACT_BUDGET) { this.budget = budget; }
+
+  /**
+   * Continues a lineage that stopped (cancelled or failed) after its last analyzed revision. `previousLines` must be that
+   * revision's lines as compared (read again from the server); a different line count means a different text and throws.
+   */
+  static restore(lineage: Lineage, previousLines: readonly string[], budget: DiffBudget = EXACT_BUDGET): LineageBuilder {
+    const last = lineage.revisions.length - 1;
+    if (last < 0) return new LineageBuilder(budget);
+    if (previousLines.length !== lineage.lineCounts[last]) throw new Error('The last analyzed revision changed. Analyze again from the start.');
+    const builder = new LineageBuilder(budget);
+    const count = lineage.nodeParent.length;
+    builder.revisions = lineage.revisions.slice(); builder.lineCounts = Array.from(lineage.lineCounts);
+    builder.checkpoints = lineage.checkpoints.slice(); builder.runs = lineage.runs.slice(); builder.texts = lineage.nodeText.slice();
+    const capacity = Math.max(INITIAL_NODES, count);
+    const widen = (old: Int32Array): Int32Array<ArrayBuffer> => { const next = new Int32Array(capacity); next.set(old); return next; };
+    builder.parent = widen(lineage.nodeParent); builder.revision = widen(lineage.nodeRevision); builder.line = widen(lineage.nodeLine); builder.depth = widen(lineage.nodeDepth);
+    builder.kind = new Uint8Array(capacity); builder.kind.set(lineage.nodeKind);
+    builder.count = count; builder.approximatePairs = lineage.approximatePairs;
+    builder.previous = previousLines.slice(); builder.previousNodes = nodesAt(lineage, last)!;
+    builder.bytes = count * NODE_BYTES + builder.texts.reduce((sum, text) => sum + textBytes(text), 0)
+      + builder.checkpoints.reduce((sum, nodes) => sum + nodes.byteLength, 0) + builder.runs.reduce((sum, runs) => sum + runs.byteLength, 0);
+    return builder;
+  }
 
   /** Adds the next text revision (oldest to newest). Returns whether this pair's alignment was approximate (false for the first revision). */
   addRevision(sha: string, lines: readonly string[]): { approximate: boolean } {
     const revision = this.revisions.length;
     const nodes = new Int32Array(lines.length);
     let approximate = false;
+    const runs: number[] = [];
     if (revision === 0) {
       // Baseline nodes store every line of this revision anyway, so the caller's strings are kept as they are.
       for (let i = 0; i < lines.length; i++) nodes[i] = this.addNode(-1, 0, i, KIND_BASELINE, lines[i]!);
     } else {
       const diff = diffLineArrays(this.previous, lines, this.budget);
-      const previousNodes = this.lineNodes[revision - 1]!;
+      const previousNodes = this.previousNodes;
       const rows = diff.rows;
       for (let r = 0; r < rows.length; r += 3) {
         const after = rows[r + 2]!;
         if (after < 0) continue;
         const before = rows[r + 1]!;
-        if (rows[r] === ROW_EQUAL) nodes[after] = previousNodes[before]!;
-        else if (before >= 0) nodes[after] = this.addNode(previousNodes[before]!, revision, after, KIND_EDITED, detach(lines[after]!));
-        else nodes[after] = this.addNode(-1, revision, after, KIND_ADDED, detach(lines[after]!));
+        const last = runs.length - 4;
+        if (rows[r] === ROW_EQUAL) {
+          nodes[after] = previousNodes[before]!;
+          if (last >= 0 && runs[last] === RUN_EQUAL && runs[last + 1]! + runs[last + 2]! === after && runs[last + 3]! + runs[last + 2]! === before) runs[last + 2]! += 1;
+          else runs.push(RUN_EQUAL, after, 1, before);
+        } else {
+          const node = before >= 0 ? this.addNode(previousNodes[before]!, revision, after, KIND_EDITED, detach(lines[after]!)) : this.addNode(-1, revision, after, KIND_ADDED, detach(lines[after]!));
+          nodes[after] = node;
+          if (last >= 0 && runs[last] === RUN_NEW && runs[last + 1]! + runs[last + 2]! === after && runs[last + 3]! + runs[last + 2]! === node) runs[last + 2]! += 1;
+          else runs.push(RUN_NEW, after, 1, node);
+        }
       }
       approximate = diff.approximate;
       if (approximate) this.approximatePairs++;
     }
-    this.revisions.push(sha); this.lineNodes.push(nodes); this.previous = lines.slice();
+    this.revisions.push(sha); this.lineCounts.push(lines.length);
+    if (revision % CHECKPOINT_EVERY === 0) { this.checkpoints.push(nodes); this.runs.push(NO_RUNS); this.bytes += nodes.byteLength; }
+    else { const stored = Int32Array.from(runs); this.runs.push(stored); this.bytes += stored.byteLength; }
+    this.previousNodes = nodes; this.previous = lines.slice();
     return { approximate };
   }
 
   /** Number of analyzed revisions so far. */
   get size(): number { return this.revisions.length; }
 
+  /** Rough bytes the lineage keeps (nodes, their texts, checkpoints and runs) — not counting the previous revision being compared. */
+  get storedBytes(): number { return this.bytes; }
+
   /** Snapshot; typed arrays are copied to their used size, so later addRevision calls do not change it. */
   result(): Lineage {
     const count = this.count;
     return {
-      revisions: this.revisions.slice(), lineNodes: this.lineNodes.slice(),
+      revisions: this.revisions.slice(), lineCounts: Int32Array.from(this.lineCounts), checkpoints: this.checkpoints.slice(), runs: this.runs.slice(),
       nodeParent: this.parent.slice(0, count), nodeRevision: this.revision.slice(0, count), nodeLine: this.line.slice(0, count),
       nodeKind: this.kind.slice(0, count), nodeDepth: this.depth.slice(0, count), nodeText: this.texts.slice(0, count),
       approximatePairs: this.approximatePairs,
@@ -285,6 +367,7 @@ export class LineageBuilder {
     this.depth[node] = parent < 0 ? 1 : this.depth[parent]! + 1;
     this.texts.push(text);
     this.count = node + 1;
+    this.bytes += NODE_BYTES + textBytes(text);
     return node;
   }
 
@@ -298,8 +381,8 @@ export class LineageBuilder {
 }
 
 /** Events of the line at (revision index, 0-based line), oldest first. Empty array if out of range. */
-export function lineEvents(lineage: Lineage, revision: number, line: number): LineEvent[] {
-  let node = lineage.lineNodes[revision]?.[line];
+export function lineEvents(lineage: Lineage, revision: number, line: number, nodes: Int32Array | undefined = nodesAt(lineage, revision)): LineEvent[] {
+  let node = nodes?.[line];
   if (node === undefined) return [];
   const events: LineEvent[] = [];
   while (node >= 0) {
