@@ -1,6 +1,37 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.144 | 갱신일: 2026-09-30
+> 상태: review | 버전: v6.145 | 갱신일: 2026-09-30
+
+## 0.1.0-pilot.21 발행 — CR-128~CR-136 누적 (2026-09-30)
+
+사용자 지시(2026-09-30 「21 릴리즈 발행해」)로 `origin/main` HEAD `4b73b70`(23차 마감 기록·인계, PR #261) 기준으로 발행했다. `4b73b70`의 main CI(run 36601486507)는 verify·integration 모두 첫 시도에 success였다. pilot.20(`73be84f`) 이후 main에 쌓인 커밋 16개를 처음 담는다 — 코드 변경은 CR-128(`d602890`)·CR-129(`e581b52`)·CR-130(`5850232`)·CR-131(`c33ea25`)·CR-132(`aa29c5c`)·CR-133(`2e94b71`)·CR-134(`a02a145`, 시험만)·CR-135(`311fdb0`)이고, CR-136(`0d14990`)은 검토서, 나머지는 기록이다. 새 마이그레이션과 Elasticsearch 매핑 변경은 없다(037 그대로). 배포 정의는 `compose.yml`(search-api의 `SOURCE_BLAME_ENABLED`·`GHE_GRAPHQL_URL`, 둘 다 기본값이 있다 — CR-135), `.env.example`, RUNBOOK(7.L 등)이 바뀌었다.
+
+**발행 전 격리 업그레이드 리허설.** 새 배포본은 이전 판 상태의 격리 업그레이드로 검증한다는 사용자 지시(2026-09-26)대로, 발행할 커밋(`4b73b70`)으로 후보 `0.1.0-pilot.21-rc1`을 먼저 만들었다(발행하지 않음, 아카이브 SHA-256 `73208ed6…f29a`). 기준 판은 사용자가 사내 적용을 보고한 `0.1.0-pilot.20`(2026-09-28)이다. 21차 격리 도구의 pilot.18 상태 스냅숏(`vol-773-p18b`: `acme/stk1`·`acme/stk2`)을 복원하고, **공식 pilot.20 자산**(1,167,710,031 bytes, SHA-256과 API digest `6fdc2e78…9789c` 대조)으로 사내가 따른 [pilot.20 절차서](pr-search-pilot20-import-procedure.md)의 순서를 밟아 pilot.20 상태를 만든 뒤 스냅숏(`vol-p20`)을 떴다. 그 상태에서 후보 아카이브를 사내처럼 풀어 RUNBOOK 3장과 7.K를 **실제 번들의 `prsctl`로** 밟았다(시험 전용 가짜 GHE, 사내 접속 없음).
+
+| 단계·확인 | 결과 |
+| --- | --- |
+| 기준 판 만들기(pilot.18 → 공식 pilot.20) | 번들 checksum 10개 일치, 계보 `0.1.0-pilot.20`·037, 7.J 스택 가져오기 저장소마다 4행(8행), 재색인 prs-commits `v2 → v3`(잡 9)·prs-links `v1 → v2`(잡 10) 모두 `completed`, `links status` 밀린 투영 없음 |
+| 업그레이드(3장: 옛 `.env` 그대로 → `PRS_VERSION` → `verify`·`load` → `upgrade`) | 옛 `.env`에 새 키 0개. compose 기본값으로 search-api에 `SOURCE_BLAME_ENABLED: "false"`·`GHE_GRAPHQL_URL: ""`가 넘어간다. 번들 checksum 10개 일치, 전 서비스 정상, `smoke`(웹 진입 307, ES 별칭 다섯, 워커 기동 로그 10/10), 계보 `0.1.0-pilot.21-rc1`·037 |
+| 7.K 2번(`upgrade` 전)·3번(뒤) | 두 역할에 `GHE_BASE_URL`이 넘어가고 기동 로그 「URL 참조 승인 호스트」가 두 역할 모두 있다. search-api 안의 `SOURCE_BLAME_ENABLED`는 `false`다 |
+| 번들 위 배선(pilot.20 → 후보, 같은 요청) | CR-128: `kind:`와 다른 필터를 함께 쓴 0건 검색 500 → 200(0건, 조건 변경 추천 1건). CR-129: 없는 경로의 봉투 없는 404 → `NOT_FOUND` 봉투와 `correlation_id`. CR-130: 구간 조회 `q=kind:commit` 500 → 400 `INVALID_PARAMETER`(`kind_not_supported_in_range`, `correlation_id`). CR-135: blame 경로 없음 → 404 `NOT_FOUND`(`feature_disabled`, 기본 꺼짐). 정상 검색(18건)과 구간 조회는 그대로다 |
+| 원본 자료(업그레이드 전·후) | PostgreSQL 정본(마이그레이션 수준·저장소·`merge_sequence`·PR·커밋 스냅숏·PR↔커밋 연결·스택·잡)과 Elasticsearch 서비스 문서(PR 16·커밋 20·연결 10)의 원문 해시, 사용자 API 응답이 모두 같다. 업그레이드 직후와 1분 뒤도 같다 |
+| PR 연결(업그레이드 뒤) | `links plan`·`apply`·`status` — 밀린 투영 없음 |
+
+**첫 실행의 차이 하나.** 첫 실행에서는 업그레이드 전 캡처와 뒤 캡처 사이에 커밋 문서 4건의 내용이 달랐다. 스냅숏 `vol-p20`에서 다시 출발해 복원 직후·1분 뒤·업그레이드 직후·1분 뒤를 원문까지 비교하니 모두 같았고, 첫 실행의 업그레이드 전 캡처와 복원 직후 캡처 사이에 같은 4건이 달랐다. pilot.20에서 7.J의 `links apply`가 넘긴 투영을 관계 투영 러너가 끝내기 전에 첫 캡처를 뜬 것이며, 업그레이드와는 무관하다.
+
+**번들 위에서 보지 않은 것.** 가짜 GHE에는 contents·trees·GraphQL이 없어, CR-132·CR-133·CR-135의 source 기능 본체(큰 파일 창, 전체 경로 목록, blame 계산)는 번들 위에서 보지 않았다 — 격리 통합 시험과 실제 화면·실제 경로 확인(6.123·6.124·6.126장)이 맡았다. pilot.18·19에서 pilot.21로 바로 올라오는 경로와 롤백 경로는 돌리지 않았다. 도구와 기록은 이 세션 scratchpad의 `rel21/`(`r21/run21.sh`·`p21.mjs`·`cap21.mjs`·`cmp21.mjs`·`logs21/`)이다 — 21차 도구의 `capture.mjs`는 19차 가상 세계와 옛 스키마를 전제해 쓰지 않았다.
+
+**검증한 번들과의 관계.** 후보와 발행본은 같은 커밋(`4b73b70`)이고, 번들 스크립트는 버전을 이미지 태그에만 쓴다. 발행 직전에 발행할 워크트리에서 앱 이미지 7종을 임시 태그로 다시 빌드해 리허설한 후보의 이미지 ID와 7종 모두 같음을 확인했고, 발행본 manifest의 이미지 ID도 7종 모두 같다 — web `afb4bd4dc33b…`, search-api `7317cdbd93a9…`, ingest-gateway `aa881c92b6ac…`, pipeline-worker `543643de26a7…`, db `7df200772af4…`, es `287bcb53218e…`, gh-executor `0e1f0ce7a1f8…`. 아카이브 SHA-256이 후보와 다른 것은 번들을 다시 묶었기 때문이다.
+
+다른 세션과 공유하는 checkout 대신, `4b73b70`에 고정한 별도 detached worktree(`/home/roqkf/pr-search-wt/release21`)에서 `build-bundle.sh 0.1.0-pilot.21 --release`를 분리 세션(`setsid nohup`)으로 돌렸다.
+
+- Release: https://github.com/89sooner/pr-search/releases/tag/0.1.0-pilot.21 (발행 2026-09-30 12:27:58 KST, Latest)
+- 태그: `4b73b703b2469f1eb24466845200dd4f41053e0c`
+- 자산: `pr-search-0.1.0-pilot.21-offline.tar.gz`, 1,169,436,369 bytes
+- 별도 채널 전달 SHA-256: `a4fffeacfab5321a080530483caecc7158d9afe4f9cba398e81280d0e2877e78`
+- 발행 전 초안 자산 대조(로그 `[12:27:58] 초안 자산 대조 (발행 전)`)와 발행 확인(`[12:27:59] 발행 확인`)을 통과했고, immutable releases가 켜져 있어 발행 뒤 자산과 태그가 잠긴다. 발행 뒤에는 `gh api releases/tags`(draft=false·immutable=true·target_commitish `4b73b70`), 자산 API의 digest와 로컬 `sha256sum`, 태그(→ `4b73b70`), manifest(`upstream.commit` `4b73b70`, `contains_secrets: false`)로 독립적으로 재대조했다. 사내 취득 명령과 같은 `gh release download`로 받은 파일(2분 25초)도 크기·SHA-256이 같고, 그 사본의 `prsctl verify`는 10개 파일이 일치하며, 계보는 `0.1.0-pilot.21`·`4b73b70`·037이고, 번들 안 RUNBOOK은 main의 RUNBOOK과 같다. 소스 계보 번들(`bundle_sha256` `26596c40…f6f0`)은 `git bundle verify`로 완전한 이력(ref `4b73b70`)임을 확인했다. tar 재적재 뒤 이미지 런타임 검사를 통과했다(로그 「번들 이미지 런타임 검사 통과 — 0.1.0-pilot.21」).
+- 문서 정합성: CR-128~CR-136은 각 병합 기록으로 이미 closed·done 처리돼 있어, 이번 갱신에서 change_control.md·work_packages.md의 상태는 손대지 않았다(pilot.14·16·18·19·20 선례와 같은 이유 — 이 PR의 첫 커밋은 PR #261의 병합 결과만 적었다). RUNBOOK도 발행 번들과 같게 두려고 바꾸지 않았다. 사내 반입 순서는 새 문서 [pilot.21 절차서](pr-search-pilot21-import-procedure.md)에 적었다.
+- 사내 실제 GHE 데이터 적용과 재반입 검증은 NOT RUN이다. pilot.20에서 올라올 때는 RUNBOOK 3장과 7.K만 따르면 된다(마이그레이션·재색인·스택 가져오기 없음). blame은 기본 꺼짐이며, 사내 GHES의 `Commit.blame` 지원과 App 권한을 확인한 뒤 7.L로 켠다. 사내 적용 뒤 문제가 생기면 사용자가 `agent-context/upstream-feedback.md`로 보고한다.
 
 ## CR-136 / WP-117 — PIPE 연동 인증 간소화 검토서 (2026-09-29, main `0d14990` 병합)
 
