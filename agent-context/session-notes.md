@@ -3657,3 +3657,37 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 ### References
 
 - PR #253~#260, 변경 대장 CR-129~CR-136, 원장 6.120~6.127장, PIPE 인계 D-24·D-25·D-26, 검토서 `docs/30_technical_architecture/pr_search_pipe_auth_simplification_review.md`.
+
+## 23차 마무리 — 0.1.0-pilot.21 발행 (2026-09-30)
+
+### Goal
+
+사용자 지시(2026-09-30): 「21 릴리즈 발행해」 — 23차를 마친 main `4b73b70`으로 `0.1.0-pilot.21`을 발행한다.
+
+### Current state
+
+- Release `0.1.0-pilot.21` 발행(2026-09-30 12:27:58 KST, Latest, immutable), 태그 → `4b73b70`, 자산 1,169,436,369 bytes, SHA-256 `a4fffeac…877e78`. 발행 기록 PR(브랜치 `docs/pilot21-release-record`)은 병합 승인 대기.
+- 사내 적용 NOT RUN. 사내 반입 순서는 `docs/40_delivery/pr-search-pilot21-import-procedure.md`.
+
+### Decisions
+
+- **기준 판은 사용자가 사내 적용을 보고한 pilot.20이다** — 메모 규칙(09-26 사용자 지시)대로 빈 설치가 아니라 pilot.20 상태에서 올린다. 그 상태는 pilot.18 스냅숏에서 **공식 pilot.20 자산**(SHA-256 대조)으로 사용자가 사내에서 따른 pilot.20 절차서 순서를 밟아 만들고 `vol-p20`으로 떴다.
+- **리허설이 증명할 것을 셋으로 좁혔다** — 옛 `.env`로 올라가는가, 자료가 보존되는가, 22·23차 코드가 번들에 배선됐는가. 가짜 GHE에는 contents·trees·GraphQL이 없어 source 기능 본체는 번들 위에서 보지 않았다(격리 통합 시험·실제 화면이 맡았다).
+- **발행 직전에 앱 이미지 7종을 임시 태그로 다시 빌드해 후보와 7/7 대조**한 뒤 발행했다. 리허설이 깨끗해 발행 직전에 다시 묻지 않았다(지시가 명시적이었다).
+
+### 이번에 배운 것
+
+- **19차 `capture.mjs`는 쓸 수 없다** — `acme/smp1900` 세계와 옛 스키마(`pull_request_commit_link.basis`, 지금은 `evidence`)를 전제한다. 세계와 무관한 `cap21.mjs`(정본 행·ES 원문 해시·API)와 `cmp21.mjs`를 새로 썼다.
+- **`links apply` 뒤 캡처는 투영 수렴을 기다려야 한다** — 관계 투영 러너가 커밋 문서를 비동기로 부분 갱신해, 수렴 전에 뜬 캡처는 뒤 캡처와 달라 보인다(첫 실행의 커밋 문서 4건). 스냅숏에서 다시 출발해 원문까지 비교하면 가를 수 있다.
+- **메모리 여유가 빠듯하면 격리 ES를 잠시 멈춘다** — `docker stop`은 자료를 남기고 되돌릴 수 있다. 빌드와 스택 실행은 겹치지 않게 순서를 짠다.
+- `gh release download`는 git 저장소 밖에서 `-R <owner/repo>`가 없으면 `git: exit status 128`로 실패한다.
+
+### Next steps
+
+1. 사용자: 발행 기록 PR의 병합, 그리고 pilot.21의 사내 적용(절차서).
+2. 사용자: blame을 켜기 전에 사내 GHES의 `Commit.blame` 지원과 App 권한 확인(RUNBOOK 7.L).
+3. 23차 인계의 나머지(CR-136 채택, 후속 DEV, 자원 정리).
+
+### References
+
+- 원장 머리 절 「0.1.0-pilot.21 발행 — CR-128~CR-136 누적」, `docs/40_delivery/pr-search-pilot21-import-procedure.md`, 리허설 로그 `ec6de473…/scratchpad/rel21/`.

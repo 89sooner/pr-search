@@ -2571,7 +2571,7 @@ export function buildTextClause(text: string): estypes.QueryDslQueryContainer {
 - 문서 검증기(`validate_srs_prd_env.py`): 기준선(main)과 오류·경고 목록이 두 모드 모두 같다 — 기본 오류 3·경고 12, `--strict` 오류 6·경고 12. 검토서가 CR-136을 언급한 채 등록 전이던 동안 생긴 경고 1건은 이 등록으로 사라졌다.
 - 상태: **closed**(2026-09-30).
 
-**병합 판정.** PR #260(base `main`, 최종 head `9807a18`, 첫 커밋은 CR-135 병합 기록)의 CI(run 36570268483)는 verify·integration 모두 첫 시도에 success다. 인용 대조, 독립 문서 리뷰와 그 반영, 문서 검증기 기준선 비교는 원장 6.127장에 있다. 사용자 승인(2026-09-30, 그 세션에서 PR #260에 대해 받았다)으로 squash 병합했다 — main `0d14990`, 트리는 PR head와 같다(`d20ab0c…`). 병합 커밋의 main CI(run 36593131677)도 verify·integration 모두 첫 시도에 success다. 이 기록은 23차 마감 기록·인계 PR의 첫 커밋이다. 권고의 채택과 구현은 승인 대기다.
+**병합 판정.** PR #260(base `main`, 최종 head `9807a18`, 첫 커밋은 CR-135 병합 기록)의 CI(run 36570268483)는 verify·integration 모두 첫 시도에 success다. 인용 대조, 독립 문서 리뷰와 그 반영, 문서 검증기 기준선 비교는 원장 6.127장에 있다. 사용자 승인(2026-09-30, 그 세션에서 PR #260에 대해 받았다)으로 squash 병합했다 — main `0d14990`, 트리는 PR head와 같다(`d20ab0c…`). 병합 커밋의 main CI(run 36593131677)도 verify·integration 모두 첫 시도에 success다. 이 기록은 23차 마감 기록·인계 PR의 첫 커밋이다. 권고의 채택과 구현은 승인 대기다. 그 마감 기록·인계 PR #261(최종 head `6e2b2ed`)의 CI(run 36594758400)는 verify·integration 모두 첫 시도에 success였고, 사용자 승인(2026-09-30, 그 세션에서 PR #261에 대해 받았다)으로 squash 병합했다 — main `4b73b70`, 트리는 PR head와 같다(`5c3e346…`). 병합 커밋의 main CI(run 36601486507)도 verify·integration 모두 첫 시도에 success다. 이 문장은 0.1.0-pilot.21 발행 기록 PR의 첫 커밋이 적었다.
 
 ### CR-135 cascade — PIPE용 GraphQL blame
 
