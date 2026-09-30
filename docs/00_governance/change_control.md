@@ -10,7 +10,7 @@
 - 원인: `readCommit`이 커밋 메타데이터를 읽으려고 diff를 계산하는 명령(`git show`)을 썼다. 코드 주석(「커밋 객체만 읽으므로 blob이 필요 없다」)과 비동기 문서 3.1장(「`git cat-file commit`」)은 사실과 달랐고, 시험 픽스처에 추가와 삭제가 함께 있는 커밋이 없어 드러나지 않았다.
 - 범위: `packages/github/src/mirror-graph.ts` — `readCommit`을 `git log -1 --no-patch --no-use-mailmap`으로 바꾸고(형식 문자열·해석 규칙은 그대로이며, `log`가 태그를 커밋으로 벗기므로 답의 SHA가 요청과 다르면 던진다), `firstParentCommits`에 `--no-use-mailmap`을 붙인다. `commit-graph.ts`의 계약 주석. 시험 — 요청 수를 세는 smart HTTP 원격과 커밋 모양 픽스처, `packages/github/integration/mirror-promisor.test.ts`, `apps/pipeline-worker/integration/sequence/mnumber-mirror-readcommit.test.ts`, 판정 기록 `packages/github/src/token-pool.test.ts`. 문서 — 백엔드 머리 주석, 비동기 3.1장, 보안 THR-015, RUNBOOK 7.M·8장, WP-120, 원장, `agent-context/upstream-feedback.md`의 상류 반영 주석(원문 보존).
 - 제외: 토큰 발급 실패를 캐시하지 않아 발급 장애 중 git 명령(로컬 명령 포함)마다 발급 요청이 나가는 것(DEV-812), `getCommitDetail`의 404 주석·동작 불일치(DEV-813), 문서의 `github_rate_limit_remaining` 지표가 배선되지 않은 것(DEV-814), API 폴백 구조 자체, 새 Release 발행, 사내 적용, 사내 GHE·PIPE 재검증(NOT RUN).
-- 검증: 수정 전 재현, 수정 뒤 시험·변이·게이트·독립 리뷰는 원장 6.130장에 적는다.
+- 검증: 수정 전 재현(명령 단위와 실제 클래스 — Git 2.54.0 워커 이미지·2.34.1), 새 시험의 수정 전 실패(mirror-promisor 26건 중 9건, sequence 4건 모두)와 수정 뒤 통과, 변이 13종(11종 죽음, 동등 변이 1종, 원격 요청 단언이 유일한 방어임을 보이는 생존 1종), 최종 트리의 전 계층 게이트(build·typecheck·lint·lint:deps·단위·통합·회귀·a11y·대비·E2E 모두 초록), 독립 검토 둘([상]·[중] 0건, [하] 7건 — 5건 반영, 2건은 기록), 문서 검증기의 오류·경고 목록이 기준선과 같음. 기록은 원장 6.130장.
 - 설계·세부 정본: WP-120, 원장 6.130장·DEV-810~DEV-814, 비동기 3.1장, 보안 THR-015, RUNBOOK 7.M.
 
 ## CR-137 — 0.1.0-pilot.21 사내 반입 중 사용자 수정을 main에 싣는다: PIPE 경로 목록 조회(`read.source.paths`)의 계약·시험 보완, compose 환경 변수 전달·PostgreSQL 루프백 발행 (2026-10-01)
