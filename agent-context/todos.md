@@ -2731,3 +2731,12 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] **DEV-792·DEV-798·DEV-799(open, 시험 안정성)** — `cancel-race` backfill의 간헐 실패, 수신 게이트웨이 부하 시험의 CI p95, 통합 시험 파일들의 저장소 잔재.
 - [ ] **DEV-795(open)** — 예전 파일 조회(`offset` 없음)의 1MB 초과 파일이 GHES 응답에 따라 권한 오류처럼 보일 수 있다(웹은 `offset` 경로라 영향 없음).
 - [ ] **23차 자원 정리(사용자)** — 컨테이너 `prs-b8-postgres`·`prs-b8-redis`·`prs-b8-es`와 그 안의 시험 DB들, 워크트리 `cr129-errors`~`cr136-auth-review`와 기록 워크트리, 세션 scratchpad 넷.
+
+## CR-139 뒤 남은 것 (2026-10-01)
+
+- [x] upstream-feedback의 `git show` promisor 결함 — CR-139(PR #264 → `d4967a9`). 원장 6.130장.
+- [ ] **사내 재검증(사용자)** — 이 변경이 들어간 다음 Release를 반입한 뒤 RUNBOOK 7.M으로 같은 시간창의 전·후 수치(`graph_fallback`, `mirror_sync_failed`, `profile_unverified`·`fetch_failed`, PIPE `PERMISSION_UNAVAILABLE`, GHE 설치 한도 잔량)를 비교하고 upstream-feedback 항목에 적는다. 그 전까지 NOT RUN.
+- [ ] **DEV-812** — 토큰 발급 실패를 캐시하지 않고, 원격을 부르지 않는 명령에도 토큰을 청해 git 인자에 싣는다. 후속 후보: 지연 인출이 막힌 명령에는 토큰을 청하지 않기, 발급 실패의 짧은 음성 캐시.
+- [ ] **DEV-813** — `getCommitDetail`의 「찾을 수 없으면 `null`」 주석과 404에서 던지는 동작.
+- [ ] **DEV-814** — 문서의 `github_rate_limit_remaining{token}` 지표를 워커·search-api `/metrics`에 배선(관측성 경보 RB-13의 전제).
+- [ ] **CR-139 자원 정리(사용자)** — 컨테이너 `prs-cr139-postgres`·`prs-cr139-redis`·`prs-cr139-es`, 워크트리 `cr139-mirror-promisor-readcommit`·`cr139-mirror-promisor-record`.

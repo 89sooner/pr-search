@@ -1,12 +1,12 @@
 # agent-context-index:v1
-generated=2026-09-30T03:36:27+00:00
+generated=2026-09-30T21:59:38+00:00
 source_dir=agent-context
 output_dir=agent-context/_handoff
 files=9
 legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd command;@path path-ref;@code code-fence;@sig retrieval-signals;@kv metadata
 
 ## read_order
-- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-09-30-PR-Search-23차-A-E-오류-세-건-Source-총량-제한-해소-하위-파일-검색-PIPE-blame-인증-검토서-병합-0.1.0-pilot.21-발행 sig=agent-context/current-handoff.md,docs/pilot21-release-record,CR-129/WP-110,CR-130/WP-111,CR-131/WP-112,CR-132/WP-113,CR-133/WP-114,CR-134/WP-115
+- f98c94b p=18 src=agent-context/current-handoff.md compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md title=Current-Handoff-2026-10-01-PR-Search-CR-139-병합-upstream-feedback의-git-show-promisor-결함-23차-pilot.21-CR-137-뒤 sig=agent-context/current-handoff.md,docs/cr139-mirror-promisor-record,CR-139/WP-120,agent-context/upstream-feedback.md,docs/pilot21-release-record,CR-129/WP-110,CR-130/WP-111,CR-131/WP-112
 - f73e2b0 p=25 src=agent-context/session-notes.md compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md title=Session-2026-08-25-후반-CR-032-036-WP-028-WP-068-완료 sig=agent-context/session-notes.md,agent-context/upstream-feedback.md,origin/main,home/roqkf/pr-search,home/roqkf/design-system,Risks/gotchas,dailywork/2026-09-15_PR-Search-CR-092-pilot.7-,home/roqkf/pr-search/exports/pr-search-2026-09-15.md
 - f3c6d32 p=25 src=agent-context/session-summary.md compact=agent-context/_handoff/compact/f3c6d32.session-summary.ctx.md title=세션-요약-PR-Search-구현-2026-08-25-후반 sig=agent-context/session-summary.md,2919/2920,1847/1847,506/506,2930/2930,8/1865,agent-context/session-notes.md,docs/00_governance/change_control.md
 - f0b2764 p=28 src=agent-context/decisions.md compact=agent-context/_handoff/compact/f0b2764.decisions.ctx.md title=확정한-설계-결정과-이유 sig=agent-context/decisions.md,docs/00_governance/change_control.md,agent-context/session-notes.md,lib/redirect.ts,text/html,logout/route.ts,-qO/dev/null,HTTP/x.y
@@ -14,7 +14,7 @@ legend=@hN heading;@p prose;@b bullet;@todo task;@dec decision;@risk risk;@cmd c
 - f527103 p=45 src=agent-context/commands.md compact=agent-context/_handoff/compact/f527103.commands.ctx.md title=명령어-시험-결과-실패한-명령과-원인 sig=agent-context/commands.md,agent-context/session-notes.md,repos/89sooner/pr-search/commits/,HTTP/1.1,prs/search-api,3002/healthz,3000/gh,prs/web
 - f5791b0 p=45 src=agent-context/files.md compact=agent-context/_handoff/compact/f5791b0.files.ctx.md title=중요-파일-경로와-역할 sig=agent-context/files.md,agent-context/session-notes.md,apps/search-api/integration/search/identifier-range.test.ts,apps/search-api/integration/source/history-pull-requests.test.ts,packages/authz/src/,apps/search-api/src/auth/,apps/web/lib/,app/auth/
 - f7b39dc p=45 src=agent-context/risks.md compact=agent-context/_handoff/compact/f7b39dc.risks.ctx.md title=리스크-불확실한-가정-함정 sig=agent-context/risks.md,agent-context/session-notes.md,Risks/gotchas,/check-runs,home/roqkf/design-system,actions/runs,gh/policies,origin/main
-- f3df0a8 p=45 src=agent-context/upstream-feedback.md compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md title=Upstream-Feedback sig=agent-context/upstream-feedback.md,500/503,3/74,api/v1/search,read/search,apps/search-api/src/search/service.ts,apps/search-api/src/search/relaxation.ts,handoff/pipe-search-integration/v1/CONTRACT_DIFF.md
+- f3df0a8 p=50 src=agent-context/upstream-feedback.md compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md title=Upstream-Feedback sig=agent-context/upstream-feedback.md,packages/github/src/mirror-graph.ts,packages/github/src/mirror-sync.ts,packages/github/src/token-pool.ts,fetch/show,Upstream,Feedback,promisor
 
 ## files
 ### f527103
@@ -28,10 +28,10 @@ sig=agent-context/commands.md;agent-context/session-notes.md;repos/89sooner/pr-s
 ### f98c94b
 src=agent-context/current-handoff.md
 compact=agent-context/_handoff/compact/f98c94b.current-handoff.ctx.md
-sha256=631696d53fa94e496d5ac5a293aa59bcf9538f0b36586cca9153970e9ba9a770
-bytes=9425 compact_bytes=10097 lines=48 priority=18
-heads=Current Handoff — 2026-09-30 PR Search 23차 (A~E: 오류 세 건·Source 총량 제한 해소·하위 파일 검색·PIPE blame·인증 검토서 병합, 0.1.0-pilot.21 발행) > Start here > Delivered (23차) > Verify before changing code > Open boundary > References
-sig=agent-context/current-handoff.md;docs/pilot21-release-record;CR-129/WP-110;CR-130/WP-111;CR-131/WP-112;CR-132/WP-113;CR-133/WP-114;CR-134/WP-115;CR-135/WP-116;CR-136/WP-117;/docs/40_delivery/pr-search-pilot21-import-procedure.md;origin/main;api/graphql;7/7;home/roqkf/pr-search-wt/;feature/cr135-pipe-blame;api/v3;agent-context/upstream-feedback.md;scratchpad/rel21/;r21/snap/vol-p20;r21/logs21/;home/roqkf/pr-search-wt/release21;deploy/single-host/bundle/;docs/40_delivery/pr_search_implementation_traceability.md
+sha256=2847388fa07ecc3d767634fefe8ee4119c9880163fde6e9e7055366b695e89a2
+bytes=11766 compact_bytes=12298 lines=54 priority=18
+heads=Current Handoff — 2026-10-01 PR Search CR-139 병합 (upstream-feedback의 git show promisor 결함) — 23차·pilot.21·CR-137 뒤 > Start here > Delivered (23차) > Verify before changing code > Open boundary > References
+sig=agent-context/current-handoff.md;docs/cr139-mirror-promisor-record;CR-139/WP-120;agent-context/upstream-feedback.md;docs/pilot21-release-record;CR-129/WP-110;CR-130/WP-111;CR-131/WP-112;CR-132/WP-113;CR-133/WP-114;CR-134/WP-115;CR-135/WP-116;CR-136/WP-117;/docs/40_delivery/pr-search-pilot21-import-procedure.md;origin/main;api/graphql;7/7;home/roqkf/pr-search-wt/;feature/cr135-pipe-blame;api/v3;scratchpad/rel21/;r21/snap/vol-p20;r21/logs21/;home/roqkf/pr-search-wt/release21
 
 ### f0b2764
 src=agent-context/decisions.md
@@ -60,8 +60,8 @@ sig=agent-context/risks.md;agent-context/session-notes.md;Risks/gotchas;/check-r
 ### f73e2b0
 src=agent-context/session-notes.md
 compact=agent-context/_handoff/compact/f73e2b0.session-notes.ctx.md
-sha256=1f8698bad05d2b937e8a571f5eb4c3819739f9741e6afe4761f2b087d119a025
-bytes=292175 compact_bytes=286429 lines=3693 priority=25
+sha256=5d2a5add91da7d62bbe6e88eb93bea503412a14bac044198121c58b1a9201262
+bytes=297198 compact_bytes=291412 lines=3743 priority=25
 heads=Session: 2026-08-25 (후반) — CR-032~036, WP-028·WP-068 완료 > Session: 2026-09-15 (8차) — CR-092 사내 pilot.7 반입 피드백 일곱 건 (PR #194) > Goal > Current state > Decisions > Changed files
 sig=agent-context/session-notes.md;agent-context/upstream-feedback.md;origin/main;home/roqkf/pr-search;home/roqkf/design-system;Risks/gotchas;dailywork/2026-09-15_PR-Search-CR-092-pilot.7-;home/roqkf/pr-search/exports/pr-search-2026-09-15.md;home/roqkf/pr-search/exports/;logs/battery-;logs/images/;feature/rel007-result-contracts;docs/cr-089-merge-record;exports/202609141932.md;exports/202609142215.md;home/roqkf/pr-search-wt/contracts;exports/202609141338.md;exports/202609140756.md;docs/40_delivery/pr_search_implementation_traceability.md;agent-context/_handoff/;github.com/89sooner/pr-search/pull/185;exports/pr-search-2026-09-14.md;perf/signature-timing.perf.test.ts;classification/commands.ts
 
@@ -76,18 +76,18 @@ sig=agent-context/session-summary.md;2919/2920;1847/1847;506/506;2930/2930;8/186
 ### f54408e
 src=agent-context/todos.md
 compact=agent-context/_handoff/compact/f54408e.todos.ctx.md
-sha256=dd135824279d2346d74992ddc5614d7606bdd564644cf3f6e41f0bbaf615ba6c
-bytes=239964 compact_bytes=186270 lines=2733 priority=30
+sha256=a06dfd195037d30a859ce92ba2d90366fa31a5ccbc5512b5fbc333ae18bef8e7
+bytes=241209 compact_bytes=186270 lines=2742 priority=30
 heads=다음 작업 · 미해결 항목 · 확인할 사항 > 먼저 할 것 — 2026-09-17 10차에서 이어받을 것 (사용자 방향은 이미 확정, 다시 안 물어도 됨) > 이전 (8차 이하, 아래는 2026-09-15 시점 기준 — 이후 진행 여부 미확인, 착수 전 실제 상태 재확인) > 2026-09-15 (8차) — CR-092 뒤에 남은 것 > 이 세션이 이어서 할 것 > 피드백 반영 범위 (사용자에게 확인해 준 기준)
 sig=agent-context/todos.md;packages/es/src/query-builder.ts;Risks/gotchas;packages/query/src/keys.ts;CR/DEV/WP;packages/contracts/src/source.ts;feature/rel007-capability-registry;fix/main-ci-s0-flaky;feature/rel007-r0-pr-list;docs/cr-092-merge-record;ops/repositories;home/roqkf/design-system;api/v1/me;/prsctl;agent-context/upstream-feedback.md;home/roqkf/pr-search-wt/cr092;home/roqkf/pr-search-wt/cr092-record;fix/cr092-pilot7-feedback;docs/cr-091-merge-record;docs/pilot7-published;home/roqkf/pr-search-wt/cr091-auth;home/roqkf/pr-search-wt/cr091-record;fix/cr091-pilot6-auth-feedback;docs/cr-090-merge-record
 
 ### f3df0a8
 src=agent-context/upstream-feedback.md
 compact=agent-context/_handoff/compact/f3df0a8.upstream-feedback.ctx.md
-sha256=644cb546115ebf28fb2b4279fa570078995372a2af0a79dfa54a87cf0ff5fc73
-bytes=21955 compact_bytes=22196 lines=110 priority=45
-heads=Upstream Feedback > kind:와 다른 필터를 함께 쓴 검색이 500/503으로 실패한다 (구현 결함, 상류 수정 — main d602890) > 보고 요지 (지시서 전언 — 원문 아님) > git merge dev로 인해 source_commit_shas가 dev 체인 커밋으로 오염된다 (설계 갭, 미해결) > 현상 > 근본 원인: git merge dev가 source_commit_shas에 dev 체인 커밋을 통째로 넣는다
-sig=agent-context/upstream-feedback.md;500/503;3/74;api/v1/search;read/search;apps/search-api/src/search/service.ts;apps/search-api/src/search/relaxation.ts;handoff/pipe-search-integration/v1/CONTRACT_DIFF.md;/prsctl;owner/name;apps/pipeline-worker/src/enrich.ts;apps/pipeline-worker/src/documents.ts;pulls/983/commits;apps/pipeline-worker/src/reindex.ts;packages/es/src/links.ts;Upstream;Feedback;d602890;context;d2d894d;SRCH;resolveSearchTarget;relaxation_hints;runSearch
+sha256=c41f5e4a0e0c3ac6a410cd56890fc624e78e092eb9302e0967965a95590c5563
+bytes=7655 compact_bytes=7390 lines=47 priority=50
+heads=Upstream Feedback > git show가 promisor remote에 원격 접근하여 rate limit 악순환 (구현 결함, 미해결) > 현상 > 근본 원인: git show가 blobless clone의 promisor remote를 건드린다 > 영향 > 요청
+sig=agent-context/upstream-feedback.md;packages/github/src/mirror-graph.ts;packages/github/src/mirror-sync.ts;packages/github/src/token-pool.ts;fetch/show;Upstream;Feedback;promisor;DEV;d4967a9;readCommit;partialclonefilter;blobless;FallbackCommitGraph;GHE;API;GIT_NO_LAZY_FETCH;MIRROR_ALLOW_BLOB_FETCH;tokenFor;TokenPool;App;fetch_failed;REST;mirror_sync_failed
 
 ## continuation_protocol
 read this index first; follow read_order; inspect only compact files needed for task; run reader.py search/show/restore when routing is unclear; treat compact context as lossy and repo source as final truth.
