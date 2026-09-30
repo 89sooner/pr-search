@@ -3691,3 +3691,53 @@ gh api repos/89sooner/pr-search/commits/<sha>/check-runs --jq '.check_runs[] | "
 ### References
 
 - 원장 머리 절 「0.1.0-pilot.21 발행 — CR-128~CR-136 누적」, `docs/40_delivery/pr-search-pilot21-import-procedure.md`, 리허설 로그 `ec6de473…/scratchpad/rel21/`.
+
+## CR-139 (2026-10-01) — upstream-feedback의 `git show` promisor 결함: 재현·수정·병합
+
+### Goal
+
+사용자 지시(2026-10-01): `agent-context/upstream-feedback.md`에 남은 미해결 항목을 최신 `origin/main`에서 실제로 재현하고 고친다. 보고의 원인 설명을 그대로 사실로 확정하지 않는다. 구현과 병합 뒤 기록은 각각 새 워크트리에서 하고, 공유 체크아웃에서는 읽기·fetch만 한다. 새 Release 발행·사내 적용은 하지 않는다.
+
+### Current state
+
+- PR #264 squash 병합 → main `d4967a9`(PR CI run 36758877260 verify·integration success, main CI run 36782003226 verify·integration 모두 첫 시도에 success). 이 기록 PR이 CR-139 closed·WP-120 done·원장 v6.148을 적는다.
+- 사내 재검증 NOT RUN(RUNBOOK 7.M). 이 변경은 아직 어느 Release에도 없다.
+
+### Decisions
+
+- 원인은 재현으로 확정했다 — `git show --no-patch`는 diff 계산을 하고(이름 변경 감지·병합 결합 diff), 추가+삭제 커밋에서 blob을 요구한다. 운영 기본(`GIT_NO_LAZY_FETCH=1`)은 **원격 요청 없이** 실패했다. 보고의 「원격에 인증 없이 연결」은 지연 인출이 허용된 실행(손으로 돌린 `git show` 포함)에서만 맞다.
+- `git log -1 --no-patch --no-use-mailmap` — `-1`만으로 원격 0이라 `--no-walk`는 쓰지 않았다. `--no-patch`는 동등 변이지만 의도 표기로 둔다. 답의 SHA가 요청과 다르면 던진다(`log`가 태그를 벗긴다).
+- `--no-use-mailmap`을 `firstParentCommits`에도 붙였다 — 같은 원인(bare 미러의 `HEAD:.mailmap`)이고 형식에 이름이 없어 값이 바뀌지 않는다.
+- 사용자 지시 14항대로 `tokenFor=null` 경로는 A·B·C·D로 판정했다. 격리(C)는 `null`을 만들지 않는다. 발급 실패(B)의 독립 결함은 사슬을 끊는 데 필요하지 않아 DEV-812로만 남겼다. 404 주석(DEV-813)·한도 잔량 지표 미배선(DEV-814)도 기록만 했다.
+- 번호는 병렬 세션(pr-search-a5)과 조율했다 — 이쪽 CR-139·WP-120·DEV-810~814, 원장 6.130장.
+
+### Changed files
+
+- `packages/github/src/mirror-graph.ts`(`readCommit`, `firstParentCommits`, 머리 주석), `commit-graph.ts`(계약 주석).
+- 시험: `packages/github/integration/{smart-http,promisor-fixture,mirror-promisor.test}.ts`, `fixtures.ts`(env 인자), `packages/github/src/token-pool.test.ts`, `apps/pipeline-worker/integration/sequence/mnumber-mirror-readcommit.test.ts`.
+- 문서: 변경 관리 CR-139, 작업 패키지 WP-120, 원장(머리 절·3·4·5장·6.130장), 백엔드·비동기(3.1장)·보안(THR-015), RUNBOOK 7장 표·7.M·8장, upstream-feedback 상류 반영 주석.
+
+### Commands
+
+- 재현(호스트 Git 2.34.1): `node /tmp/claude-1000/-home-roqkf-pr-search/3b72f35b-7b9f-4a88-be23-508e3ae342d3/scratchpad/repro/repro.mjs <out>`. 배포 Git 2.54.0: `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work --entrypoint node prs/pipeline-worker:0.1.0-pilot.21 repro.mjs /work/<out>`.
+- 실제 클래스를 이미지에서: `pnpm --filter @prs/github run build` 뒤 `dist/{mirror-graph,mirror-sync,commit-graph,graph-plan,redact}.js`를 복사해 `imagecheck/check.mjs <dist> <out>`.
+- 게이트: `/tmp/claude-1000/-home-roqkf-pr-search/3b72f35b-7b9f-4a88-be23-508e3ae342d3/scratchpad/gate.sh <tag> <db> typecheck lint deps unit build a11y contrast e2e int reg`(결과 캐시를 치우고 크기순). 변이: `python3 /tmp/claude-1000/-home-roqkf-pr-search/3b72f35b-7b9f-4a88-be23-508e3ae342d3/scratchpad/mut/mutate.py [ids]`.
+- 실패했던 것: 첫 CI 감시 스크립트가 「모두 완료」를 일찍 냈다 — 잡 이름별로 `completed`를 확인한다.
+
+### Next steps
+
+1. 다음 Release에 이 변경이 실리면, 사내 반입 뒤 RUNBOOK 7.M으로 같은 시간창의 전·후 수치를 비교하고 upstream-feedback 항목에 적는다.
+2. DEV-812·813·814를 고칠지 사용자가 정한다.
+3. 병렬 세션의 CR-137 병합 기록과 그 세션의 작업이 들어오면 인계 문서를 다시 맞춘다.
+4. 자원 정리(사용자): `prs-cr139-*` 컨테이너, 워크트리 둘.
+
+### Risks/gotchas
+
+- **재현 하네스가 조건을 실제로 넘겼는지 실행마다 기록한다** — env 조립 순서 실수로 `GIT_NO_LAZY_FETCH`가 빠져 「Git 2.54가 변수를 무시한다」는 거짓 결론에 닿을 뻔했다. 호스트 2.34.1(우분투 백포트)도 변수를 지킨다.
+- `git worktree add -b … origin/main`은 upstream을 main으로 잡는다 — push는 `HEAD:refs/heads/<branch>`로 명시했다.
+- 문서 검증기는 아직 등록되지 않은 CR·WP 번호를 적으면 새 경고를 낸다 — 병렬 세션의 번호는 등록 전까지 문서에 적지 않는다.
+- 워커 이미지에는 `git-http-backend`가 없어 시험 원격은 `upload-pack --stateless-rpc`를 직접 서빙한다.
+
+### References
+
+PR #264, main `d4967a9`, 원장 6.130장, CR-139, WP-120, DEV-810~DEV-814, RUNBOOK 7.M.
