@@ -1779,7 +1779,7 @@ C="docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/sing
    ```
 
 3. **M 번호 근거와 durable work** — `profile_unverified`와 `fetch_failed`가 쌓이지 않는다. `fetch_failed`는 git fetch가
-   아니라 PR 근거의 GHE REST 조회 실패다.
+   아니라 PR 근거의 GHE REST 조회 실패다. 지표는 처음 셀 때 줄이 생기므로, 줄이 없으면 그 프로세스가 기동한 뒤 0이다.
 
    ```bash
    $C exec -T postgres psql -U prs -d prs -c "SELECT reason, count(*) FROM mnumber_evidence WHERE state = 'unresolved' GROUP BY reason ORDER BY 2 DESC"

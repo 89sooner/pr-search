@@ -402,8 +402,9 @@ export class MirrorCommitGraph implements CommitGraph {
     }
     /*
      * `log`는 주석 태그를 그것이 가리키는 커밋으로 벗겨 답한다. 요청한 객체가 커밋이
-     * 아니었다면 다른 커밋의 값을 이 SHA의 값으로 싣지 않는다 — 옛 `show`도 그 경우
-     * 태그 머리글 때문에 해석에 실패해 던졌다.
+     * 아니었다면 다른 커밋의 값을 이 SHA의 값으로 싣지 않고 던진다 — 폴백하지 않는다.
+     * 호출자는 커밋 SHA만 넘긴다. (옛 `show`는 태그 머리글이 앞에 붙어 해석에 실패해
+     * 던지거나, 태그가 가리키는 커밋의 diff가 blob을 요구하면 `null`이었다.)
      */
     if (full !== sha) {
       throw new CommitGraphError('mirror', `요청한 SHA가 커밋이 아니다: ${sha}`);

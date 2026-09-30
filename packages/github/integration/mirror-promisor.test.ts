@@ -317,7 +317,16 @@ describe('DEV-811: HEAD의 `.mailmap` blob을 읽지 않는다', () => {
 
     const head = await eager.resolveHead(MAILMAP_REF, 'main');
     const chain = await eager.firstParentCommits(MAILMAP_REF, { from: null, to: head ?? '' });
-    expect(chain.length).toBeGreaterThan(0);
+    // 형식(`%H %cI`)에 이름이 없으므로 메일맵을 끄는 것이 체인·순서·시각을 바꾸지 않는다 — git이 낸 값과 같다.
+    const expected = (await run(mailmapOrigin.dir, ['log', '--first-parent', '--reverse', '--format=%H %cI', 'main'], PLAIN_ENV))
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => {
+        const [sha, committedAt] = line.trim().split(' ');
+        return { sha: sha ?? '', committedAt: committedAt ?? '' };
+      });
+    expect(expected.length).toBeGreaterThan(1);
+    expect(chain).toEqual(expected);
 
     expect(remote.counters().total).toBe(0);
     expect(await blobs(volume, MAILMAP_REPOSITORY_ID)).toBe(0);

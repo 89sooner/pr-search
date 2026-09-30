@@ -47,7 +47,7 @@ import { createSquashFixture, type SquashFixture } from './squash-fixture.js';
 
 const REPOSITORY_ID = 7439;
 const OWNER = 'acme';
-const NAME = 'smp1939';
+const NAME = 'example1939';
 const BRANCH = 'main';
 const FAKE_TOKEN = 'fake-installation-token-cr139';
 /** 삭제와 추가가 함께 있는 squash 커밋의 PR. */
