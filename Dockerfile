@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-#
 # PR Search 애플리케이션 이미지 (WP-070 / CR-059 / ADR-021).
 #
 # **하나의 정의가 배포 단위 여섯을 낸다** — `--target`으로 고른다. 워크스페이스
