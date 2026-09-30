@@ -764,6 +764,7 @@ done
 | 운영 목록 두 개의 이어 보기 (`CR-125`) — 등록 검토 요청 대기열·감사 로그에서 같은 밀리초의 항목이 페이지 경계에 걸려도 빠지지 않음, 옛 판 커서 안내 | `VERIFIED (external, isolated)` (2026-09-27) — 격리 compose의 실제 관리자 화면(실제 Chromium)에서 수정 전 판의 누락(등록 요청 60건 중 58건, 감사 기록 120건 중 118건)과 수정 뒤 전량을 확인했고, 수정 전 판이 발급한 실제 커서를 새 서버에 보내 옛 판 안내를 확인했다(원장 6.116장). 사내 운영 화면은 `NOT RUN — internal environment required` |
 | 업그레이드 직후 스택 해제 표시의 자동 반영 (`CR-126`) — 가져오기 전의 상위 PR 병합·종료·head 변경과 하위 PR retarget, 이미 해제된 이력의 보존, 재색인 보호 유지 | `VERIFIED (external, isolated)` (2026-09-27) — 격리 compose에서 실제 `0.1.0-pilot.18`이 만든 스택으로 수정 전 판(`0.1.0-pilot.19`)과 수정 뒤 판을 같은 스냅숏에서 비교했다(원장 6.117장). 사내 실데이터는 `NOT RUN — internal environment required` |
 | 한국 시간 표시와 KST 달력 날짜 검색 (`CR-127`) — 모든 화면의 시각 KST·원본 UTC 툴팁, 새로 고른 날짜 필터의 한국 날짜 하루(`@Asia/Seoul`), 옛 URL·저장된 검색의 UTC 조건 보존, 통계 버킷과 드릴다운 목록의 일치, 감사 기록 기간 | `VERIFIED (external, isolated)` (2026-09-28) — 격리 compose에서 수정 전 판(`a1dbedb`)과 수정 뒤 판을 같은 자료(KST 자정 앞뒤로 머지한 PR 20건)로 비교했고, 브라우저 시간대 UTC·Asia/Seoul·America/Los_Angeles에서 같은 표시와 같은 요청을 확인했다. 업그레이드 전후 원본 시각·M 번호·시퀀스는 같았다(원장 6.118장). 마이그레이션·재색인은 없다. 사내 실데이터는 `NOT RUN — internal environment required` — 업그레이드 뒤 검색에서 날짜를 골라 질의 칩이 `KST`인지, 시각에 마우스를 올려 원본 UTC가 보이는지, 통계에서 하루 버킷을 눌러 목록 수가 버킷 수와 같은지 본다 |
+| 미러 커밋 읽기가 promisor 원격·GHE API를 부르지 않음 (`CR-139`, 7.M) — 이름 변경·삭제+추가·병합 커밋의 메타데이터, mirror 모드 M 번호 근거, 기본 브랜치에 `.mailmap`이 있는 저장소 | `VERIFIED (external)` (2026-10-01) — 요청 수를 원격이 세는 HTTP 원격과 실제 blobless 미러, Git 2.54.0(워커 이미지)·2.34.1, 수정 전 재현과 수정 뒤(원장 6.130장). **사내 GHE의 한도 회복과 PIPE `PERMISSION_UNAVAILABLE` 재발 여부는 `NOT RUN — internal environment required`** (7.M) |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
 
@@ -1740,10 +1741,72 @@ App(`GHE_APP_*`)에 어떤 권한이 필요한지(Contents 읽기로 추정)는 
 
 4. **되돌리기.** `SOURCE_BLAME_ENABLED=false`로 두고 `./prsctl upgrade`. 저장한 자료가 없어 치울 것이 없다.
 
+### 7.M 미러 커밋 읽기와 GHE 한도 — CR-139가 들어간 판의 사내 확인 (WP-120 / DEV-810·811, `CR-139`)
+
+**무엇이 바뀌었나.** 미러의 커밋 메타데이터 읽기가 `git show`에서 `git log -1`로 바뀌었다. 옛 판에서는 이름 변경·삭제+추가가
+있는 커밋과 병합 커밋의 상당수를 미러가 읽지 못해(원격 요청 없이 실패) 그때마다 GHE REST로 폴백했다 — 로그에는
+`"reason":"graph_fallback"`과 「미러가 커밋을 갖고 있지 않다」가 남았지만 미러는 그 커밋을 갖고 있었다. mirror 모드 M 번호
+근거는 API가 한도 격리 중이면 그 커밋에서 `profile_unverified`로 멈추고 60초마다 다시 봤다. 이 판은 로컬에 있는 커밋을
+읽으려고 API를 부르지 않는다. **외부에서 확인한 것은 코드 경로다.** 사내 한도가 실제로 회복되는지, PIPE
+`PERMISSION_UNAVAILABLE`이 사라지는지는 사내에서만 확인할 수 있다.
+
+**같은 시간창을 비교한다.** 업그레이드 전에 아래 1~5를 한 번 기록하고, 업그레이드 뒤 같은 요일·같은 시간대에 같은 길이(예:
+1시간)로 다시 기록한다. 카운터 지표는 재기동하면 0부터 다시 세므로, 지표는 한 시간 간격으로 두 번 읽어 그 차이를 쓴다.
+
+```bash
+C="docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/single-host/compose.yml"
+```
+
+1. **API 폴백 수** — 크게 줄어야 한다. 남는 것은 미러가 아직 받지 못한 커밋(새 push 직후)이나 미러가 없는 저장소다.
+
+   ```bash
+   $C logs --since 1h worker-mirror   | grep -c '"reason":"graph_fallback"'
+   $C logs --since 1h worker-sequence | grep -c '"reason":"graph_fallback"'
+   ```
+
+   남은 폴백의 커밋이 정말 미러에 없는지 본다. 로그의 `detail`에 SHA가 있고, 저장소는 worker-mirror가
+   `repository_id`, worker-sequence가 `repository`로 적는다.
+
+   ```bash
+   $C exec -T worker-mirror git -C /var/lib/prs/mirrors/<repository_id>.git cat-file -t <sha>
+   ```
+
+   `commit`이 나오면 미러가 가진 커밋인데 폴백한 것이다 — 이 판에서는 나오면 안 된다. 그 로그 줄과 함께 보고한다.
+2. **미러 최신화** — `mirror_sync_failed`가 반복되지 않는다.
+
+   ```bash
+   $C logs --since 1h worker-mirror worker-sequence | grep -c '"reason":"mirror_sync_failed"'
+   ```
+
+3. **M 번호 근거와 durable work** — `profile_unverified`와 `fetch_failed`가 쌓이지 않는다. `fetch_failed`는 git fetch가
+   아니라 PR 근거의 GHE REST 조회 실패다. 지표는 처음 셀 때 줄이 생기므로, 줄이 없으면 그 프로세스가 기동한 뒤 0이다.
+
+   ```bash
+   $C exec -T postgres psql -U prs -d prs -c "SELECT reason, count(*) FROM mnumber_evidence WHERE state = 'unresolved' GROUP BY reason ORDER BY 2 DESC"
+   $C exec -T postgres psql -U prs -d prs -c "SELECT kind, state, last_reason, count(*) FROM sequence_work WHERE state IN ('ready', 'retry') GROUP BY 1, 2, 3 ORDER BY 4 DESC"
+   $C exec -T worker-sequence wget -qO- http://127.0.0.1:3003/metrics | grep -E '^(sequence_work_total|mnumber_blocked_total)'
+   ```
+
+4. **PIPE** — `PERMISSION_UNAVAILABLE`이 다시 나지 않는다. 연동 이벤트는 사유를 `detail.reason`에 남긴다
+   (`ghe_user_lookup_failed`는 신원 확인, `scope_unavailable`은 접근 범위 조회가 GHE를 부르지 못한 것이다).
+
+   ```bash
+   $C exec -T postgres psql -U prs -d prs -c "SELECT date_trunc('hour', occurred_at) AS hour, detail->>'reason' AS reason, count(*) FROM pipe_integration_event WHERE result_code = 'PERMISSION_UNAVAILABLE' AND occurred_at > now() - interval '24 hours' GROUP BY 1, 2 ORDER BY 1"
+   ```
+
+5. **한도 잔량** — PR Search는 설치별 잔량을 지표로 내보내지 않는다(`DEV-814`). 잔량은 GHE 쪽에서 본다 — 관리자 콘솔의
+   API rate limit 설정과 사용량, 또는 그 App 설치 토큰으로 `GET /api/v3/rate_limit`. 업그레이드 전후 같은 시간창의 최저
+   잔량을 적는다. 잔량이 10% 아래로 내려가면 그 설치를 쓰는 모든 서비스가 회복 시각까지 스스로 격리한다.
+6. **번호와 미러** — 채번과 M 번호가 정상이고(화면의 M 번호, 7.A의 지연 측정), 미러 fetch가 성공한다(2).
+
+**결과를 기록한다.** 1~5의 전·후 수치를 `agent-context/upstream-feedback.md`의 해당 항목(상류 반영 주석 아래)에 적는다.
+그 전까지 이 확인은 `NOT RUN — internal environment required`다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
 | --- | --- |
+| `worker-mirror`·`worker-sequence` 로그에 `"reason":"graph_fallback"`과 「미러가 커밋을 갖고 있지 않다」가 계속 나온다 | `CR-139` 전 판이면 이름 변경·삭제+추가가 있는 커밋과 병합 커밋을 미러가 읽지 못한 것이다(`DEV-810`) — 미러는 그 커밋을 갖고 있고, 폴백마다 GHE REST를 썼다. 이 판에서는 미러가 정말 그 커밋을 갖고 있지 않을 때만 나온다 — 미러 최신화 실패(`mirror_sync_failed`)나 볼륨을 본다(7.M의 1·2) |
 | blame(API의 `/source/…/blame`·PIPE `read.source.blame`)이 404이고 본문 `detail.reason`이 `feature_disabled`다 | 꺼져 있다 — 기본값이다(`CR-135`). 켜려면 7.L. 켰는데도 그렇다면 search-api가 그 값을 받지 않았다: 새 `compose.yml`의 search-api 블록에 `SOURCE_BLAME_ENABLED` 줄이 있는지(7.L 2번), `.env`의 값이 정확히 `true`인지 본다. 꺼진 동안 PIPE에는 capability `source_blame:read`가 없다 |
 | blame이 501 `SOURCE_BLAME_UNSUPPORTED`(「This GitHub Enterprise Server does not provide blame through its API.」)다 | 사내 GHES의 GraphQL 스키마에 `Commit.blame`이 없다(`CR-135`). 일시 장애가 아니라 다시 불러도 같다. GHES 판을 확인하고, 지원하지 않으면 `SOURCE_BLAME_ENABLED=false`로 되돌린다(7.L). Time-lapse·Diff는 영향이 없다 |
 | blame이 503 `SOURCE_PERMISSION_REQUIRED`다 | GHE가 조회용 App의 GraphQL 호출을 401·403·`FORBIDDEN`으로 거절했다(`CR-135`). App 권한과 그 저장소 설치를 본다 — blame에 필요한 권한은 실제 GHES에서 확인하지 못했다(Contents 읽기로 추정). 같은 저장소의 파일·History 조회도 503이면 조회 App 권한 전반의 문제다. 원격 오류 문구는 search-api 로그에 남기지 않는다 |

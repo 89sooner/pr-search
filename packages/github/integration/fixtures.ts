@@ -17,7 +17,8 @@ export interface GitResult {
   readonly stderr: string;
 }
 
-export function git(cwd: string | null, args: readonly string[]): Promise<GitResult> {
+/** `env`는 기본값 위에 얹힌다 — 커밋마다 작성자·시각을 바꾸는 픽스처가 쓴다 (CR-139). */
+export function git(cwd: string | null, args: readonly string[], env: NodeJS.ProcessEnv = {}): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     execFile(
       'git',
@@ -32,6 +33,7 @@ export function git(cwd: string | null, args: readonly string[]): Promise<GitRes
           // 결정론적 픽스처. 시각이 흔들리면 SHA가 매번 달라진다.
           GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
           GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+          ...env,
         },
         maxBuffer: 32 * 1024 * 1024,
       },
@@ -51,8 +53,8 @@ export function git(cwd: string | null, args: readonly string[]): Promise<GitRes
   });
 }
 
-export async function run(cwd: string, args: readonly string[]): Promise<string> {
-  const result = await git(cwd, args);
+export async function run(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv = {}): Promise<string> {
+  const result = await git(cwd, args, env);
   if (result.code !== 0) {
     throw new Error(`git ${args.join(' ')} 실패 (${String(result.code)}): ${result.stderr}`);
   }

@@ -1,6 +1,10 @@
 # PR Search 구현 추적 원장
 
-> 상태: review | 버전: v6.146 | 갱신일: 2026-10-01
+> 상태: review | 버전: v6.147 | 갱신일: 2026-10-01
+
+## CR-139 / WP-120 — 미러 커밋 읽기의 promisor 원격·API 호출 제거 (2026-10-01, 병합 전)
+
+사용자 지시(2026-10-01). `agent-context/upstream-feedback.md`의 미해결 보고(「`git show`가 promisor remote에 원격 접근하여 rate limit 악순환」)를 재현하고 고친다. 요청 수를 원격 쪽에서 세는 HTTP 원격과 실제 blobless promisor 미러로 Git 2.54.0(워커 이미지)·2.34.1에서 재현한 원인은 `readCommit`의 `git show --no-patch`가 diff를 계산한다는 것이었다 — 추가와 삭제가 함께 있는 커밋·병합에서 이름 변경 감지가 blob을 요구하고, 운영 기본(`GIT_NO_LAZY_FETCH=1`)에서는 원격 요청 없이 실패해 API 폴백을 불렀다(DEV-810). 지연 인출이 허용된 실행에서는 promisor 원격에서 blob을 받아 볼륨에 남겼다. `git log -1 --no-patch --no-use-mailmap`으로 바꿨고, bare 미러의 `HEAD:.mailmap` 읽기를 `firstParentCommits`에서도 막았다(DEV-811). 보고의 「격리 때문에 `tokenFor`가 `null`」, 「git fetch 실패가 `fetch_failed`」, 「PIPE가 같은 토큰 풀을 공유」는 코드와 달라 정정했고, 조사에서 드러난 후속 셋(DEV-812~DEV-814)은 고치지 않고 기록한다. 사내 GHE·PIPE 재검증은 NOT RUN이다. 기록은 6.130장.
 
 ## CR-137 / WP-118 — 사내 반입 중 사용자 수정: PIPE 경로 목록 조회와 배포 설정 (2026-10-01, 병합 전)
 
@@ -422,6 +426,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | WP ID | 이름 | REL | 상태 | 담당 | 커밋/PR | 검증 결과 | 비고 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| WP-120 | 미러 커밋 읽기의 promisor 원격·API 호출 제거 | correction (CR-139) | in_progress | 에이전트 | 브랜치 `fix/cr139-mirror-promisor-readcommit` (병합 전) | 6.130장 | 사내 보고(upstream-feedback)의 재현·수정이다. 사내 GHE·PIPE 재검증은 NOT RUN이다(RUNBOOK 7.M). 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-118 | 사내 반입 중 사용자 수정 — PIPE 경로 목록·배포 설정 | 범위 변경 (CR-137) | in_progress | 에이전트(사용자 변경을 실음) | 브랜치 `feature/cr137-pipe-source-paths` (병합 전) | 6.128장 | 사용자 보고: pilot.21 사내 반입 중 확인하고 고친 변경이다(세부 증거 없음). 이 판의 새 Release 발행은 이 WP 범위가 아니다. `agent-context/upstream-feedback.md`의 git show 결함은 미해결 |
 | WP-117 | PIPE 연동 인증 간소화 검토서 | 검토 (CR-136) | done | 에이전트 | main `0d14990`(PR #260 squash 병합, 2026-09-30; head `9807a18`) | 6.127장 | 구현 없음 — 권고(안 1)의 채택과 구현은 승인 대기다. 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
 | WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | done | 에이전트 | main `311fdb0`(PR #259 squash 병합, 2026-09-29; head `06b6710`) | 6.126장 | 사내 적용 NOT RUN — 사내 GHES의 blame 지원·권한은 확인하지 못했다(대역으로만 검증). 새 Release 발행과 사내 적용은 이 WP 범위 밖이다 |
@@ -541,6 +546,7 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 
 | 요구사항 ID | 담당 WP | 구현 위치(모듈/경로) | 테스트 | 상태 |
 | --- | --- | --- | --- | --- |
+| THR-015 · FR-SEQ-008 AC-9 · JOB-MIR-002 (미러의 커밋 메타데이터는 커밋 객체만 읽는다 — 원격·API를 부르지 않는다, CR-139) | WP-120 | `packages/github/src/mirror-graph.ts`(`readCommit`의 `git log -1 --no-patch --no-use-mailmap`, 답 SHA 검사, `firstParentCommits`의 `--no-use-mailmap`), `packages/github/src/commit-graph.ts`(계약 주석) | `packages/github/integration/mirror-promisor.test.ts`(요청 수를 원격이 세는 HTTP 원격 `smart-http.ts`, 커밋 모양 `promisor-fixture.ts`), `apps/pipeline-worker/integration/sequence/mnumber-mirror-readcommit.test.ts`, `packages/github/src/token-pool.test.ts`(판정 기록) | **완료(병합 전)** — 6.130장 |
 | FR-SRC-005 (선택 리비전의 파일 blame — 기능 게이트 기본 꺼짐, 권한·범위 먼저, 서버 소유 고정 query·조회 문서만 POST, GraphQL 한도 분리, 분류 순서 고정, GitHub 순서 그대로·없는 작성자 `null`, 미지원 501·권한 503·한도 429·일시 장애 502, 본문 없음) | WP-116 | `packages/github/src/{config,transport,source-blame,source-reader,index}.ts`, `packages/github/testing/{mock-ghe,mock-source}.ts`(GHE 대역 GraphQL), `apps/search-api/src/{config,index,runtime}.ts`, `apps/search-api/src/source/{routes,service}.ts`, `packages/contracts/src/{source,error-codes}.ts` | `packages/github/src/{config,transport,source-blame}.test.ts`, `packages/github/testing/source-blame.test.ts`, `apps/search-api/src/source/source-blame.test.ts`, `apps/search-api/src/{config,runtime}.test.ts`, `apps/search-api/integration/source/source-blame.test.ts`, `regression/runtime-reachability.test.ts` | **완료 — main `311fdb0` (CR-135, 6.126장)** |
 | FR-INT-001 AC-5 (고정 조회 12종 — `read.source.blame`(API-INT-015)과 capability `source_blame:read`는 게이트가 켜졌을 때만, `read.source.paths`(API-INT-016)는 게이트 없이 모든 배포에서. 꺼진 배포의 능력 목록은 CR-135 전과 같다) | WP-116, WP-118 | `apps/search-api/src/integrations/pipe/{operations,routes}.ts`, 공유 실행 `executeSource`(`apps/search-api/src/source/routes.ts`), `handoff/pipe-search-integration/v1/*`(D-26·D-27) | `apps/search-api/integration/integrations/pipe/blame-disabled.test.ts`, `apps/search-api/src/integrations/pipe/contract.test.ts`, `apps/search-api/integration/integrations/pipe/{readonly,parity,openapi,blame-real-path}.test.ts` | **완료 — main `311fdb0` (CR-135, 6.126장)** · CR-137 implemented (병합 전, 6.128장) |
 | FR-SRC-001 AC-2·AC-5 (Files & folders 검색 — 고정 revision의 모든 파일 경로, 재귀 한 번·잘리거나 늦으면 걷기, 대소문자 무시 부분 문자열, 경로마다 하나, 선택 → History·Diff·Time-lapse, 다 읽기 전 「결과 없음」 금지, 취소·이어 읽기, 범위 밖 비노출) | WP-114 | `packages/github/src/source-reader.ts`, `apps/search-api/src/source/{service,routes,tree-diff}.ts`, `packages/contracts/src/source.ts`, `apps/web/lib/source-paths.ts`, `apps/web/components/source/SourceTree.tsx`, `apps/web/app/source-workspace.css` | `apps/search-api/src/source/{source-paths,tree-diff}.test.ts`, `packages/github/src/source-reader.test.ts`, `apps/search-api/integration/source/source-paths.test.ts`, PIPE `readonly.test.ts`(404), `apps/web/lib/source-paths.test.ts`, `apps/web/a11y/source-tree-search.test.tsx` | **완료 — main `2e94b71` (CR-133, 6.124장)** |
@@ -726,6 +732,11 @@ CR-080 구현 기록: WP-074를 구현했다. `DEV-576`은 **resolved**(채번 �
 | DEV-800 | 2026-09-30 | **사용자가 사내 반입 중 PIPE 연동 코드에 경로 목록 조회(`read.source.paths`, API-SRC-005 실행)를 더했지만 계약·시험·문서가 따라오지 않았다.** `operations.ts`·`routes.ts`만 바뀌어 OpenAPI·operation map에 경로가 없어 계약 단위 시험 5건이 실패했고, CR-133의 「PIPE 연동에는 싣지 않는다」(`readonly.test.ts`의 404)와 CR-135의 기본 배포 `/context` 불변(`blame-disabled.test.ts`)과도 어긋났다. 게이트가 없어 모든 배포의 `/context` 조회 목록이 바뀐다 | FR-INT-001 AC-5 / WP-118 | 문서·코드 불일치(사용자 변경) | CR-137 | resolved — 사용자 결정으로 계약·시험·문서를 코드에 맞추고 `PSI-1.0`을 유지했다(API 계약 8장의 두 번째 예외, D-27). 6.128장 |
 | DEV-801 | 2026-09-30 | **compose가 `.env.example`·RUNBOOK이 적은 M 번호 표기·태그 설정 9개를 컨테이너에 넘기지 않았다.** `x-annotate-env`·`x-tag-env`에 `MNUMBER_ANNOTATE_SWEEP_MS`·`MNUMBER_ANNOTATE_SWEEP_LIMIT`·`MNUMBER_ANNOTATE_BLOCK_COOLDOWN_MS`·`MNUMBER_ANNOTATE_WRITE_SPACING_MS`·`GHE_ANNOTATE_REQUEST_TIMEOUT_MS`·`MNUMBER_TAG_SWEEP_MS`·`MNUMBER_TAG_SWEEP_LIMIT`·`MNUMBER_TAG_WRITE_SPACING_MS`·`GHE_TAG_REQUEST_TIMEOUT_MS`가 없어서, `.env`에 값을 적어도 `worker-annotate`는 코드 기본값만 썼다. 사용자가 pilot.21 사내 반입 중 찾아 고쳤다. compose의 `MNUMBER_TAG_SWEEP_LIMIT` 기본값은 200이라 코드·`.env.example`의 500과 다르다(`.env`에 키가 없을 때만 차이가 난다) | FR-SEQ-009, FR-SEQ-012 / WP-118 | 배포 설정 결함 | CR-137 | resolved — main `a794a52`. 기본값 200은 사용자 결정으로 유지한다. `MNUMBER_TAG_BLOCK_COOLDOWN_MS`·`MNUMBER_TAG_LIST_MAX_PAGES`는 여전히 넘기지 않는다(후속 후보). 6.128장 |
 | DEV-802 | 2026-10-01 | **PIPE 통합 하네스가 색인한 fixture 문서(`psi-pr-*` 등, org_id 1)를 닫을 때 지우지 않아, 조직 범위로 `prs-pull-requests` 전체를 세는 `apps/search-api/integration/authz/team-scope-es.test.ts`가 그 뒤에 돌면 5건 실패한다.** 통합 시험은 한 워커에서 차례로 돌고(`fileParallelism: false`), 결과 캐시가 없는 CI에서 vitest는 큰 파일부터 실행한다. main에서는 큰 PIPE 파일들 뒤·`team-scope-es`(8,717바이트) 앞에 `packages/es/integration/bootstrap.test.ts`(8,993바이트)가 돌며 서빙 인덱스를 지워 오염이 드러나지 않았다. CR-137이 `blame-disabled.test.ts`를 8,156바이트에서 8,851바이트로 키우자 그 파일이 bootstrap 뒤·`team-scope-es` 바로 앞으로 옮겨졌고, 로컬 게이트(격리 ES)에서 5건이 실패했다 | FR-INT-001 / WP-118 | 통합 시험 위생 | CR-137 | resolved — 하네스의 `close()`가 자기가 색인한 fixture 문서를 id로 지운다. 6.128장 |
+| DEV-810 | 2026-10-01 | **미러 `readCommit`의 `git show --no-patch`가 diff를 계산해 blob을 요구했다.** `--no-patch`는 diff 출력만 끄고 계산은 남긴다. 그 계산의 이름 변경 감지(`diff.renames` 기본 켜짐)와 병합의 결합 diff가 추가와 삭제가 함께 있는 커밋(이름 변경+수정, 삭제+무관한 추가, 둘째 부모 기준으로 추가·삭제가 섞인 병합)에서 blob 내용을 요구하고, blobless 미러에는 그 blob이 없다. 운영 기본(`GIT_NO_LAZY_FETCH=1`)에서는 원격 요청 0건으로 `could not fetch <blob> from promisor remote`(exit 128) → `null` → `FallbackCommitGraph`가 「미러가 커밋을 갖고 있지 않다」로 API를 불렀다(커밋당 REST 1건, 다시 볼 때마다 되풀이). 지연 인출이 허용되면 커밋마다 promisor 원격 요청 2건으로 blob을 받아 볼륨에 남겼다(THR-015). 코드 주석과 비동기 3.1장은 「커밋 객체만 읽는다」·「`git cat-file commit`」이라고 적었다. 사내 보고(`agent-context/upstream-feedback.md`)가 계기다 | WP-120 / WP-067, FR-SEQ-008 AC-9, JOB-MIR-002, THR-015 | 구현 결함 (사내 보고, 실측으로 확인) | CR-139 | resolved — `git log -1 --no-patch --no-use-mailmap`이고, 답의 SHA가 요청과 다르면 던진다. 6.130장 |
+| DEV-811 | 2026-10-01 | **bare 미러의 `git log`가 기본 브랜치의 `.mailmap` blob을 읽으려 한다.** `log.mailmap`이 기본으로 켜져 있고 bare 저장소의 `mailmap.blob` 기본값이 `HEAD:.mailmap`이라, 기본 브랜치에 `.mailmap`이 있는 저장소에서 `git log`·`git show`가 시작하면서 그 blob을 읽는다. 차단이면 stderr에 `unable to read mailmap object` 한 줄, 허용이면 promisor 원격 요청 2건과 blob 저장이다. `readCommit`과 `firstParentCommits`가 해당한다. 이 제품의 형식(`%an` 등)은 메일맵을 적용하지 않은 값이라 읽을 이유가 없다 | WP-120 / WP-020, WP-067, THR-015 | 구현 결함 (실측) | CR-139 | resolved — 두 명령에 `--no-use-mailmap`을 붙였다(값 불변 실측). 6.130장 |
+| DEV-812 | 2026-10-01 | **토큰 발급 실패를 캐시하지 않아, 발급 장애 중에는 미러 git 명령마다 발급 요청이 나간다.** `MirrorCommitGraph`는 로컬 명령(`rev-parse`·`merge-base`·`log` 등)을 포함한 모든 git 호출마다 `tokenFor`를 부르고, `InstallationTokenProvider`는 성공한 토큰만 캐시한다. 원격을 부르지 않는 명령에도 토큰이 `-c http.extraHeader` 인자로 실려 워커의 프로세스 인자 목록에 잠깐 보인다(CR-139 검토 B — 옛 `git show`도 같았다). 발급이 실패하면 워커의 `tokenFor`가 `null`로 바꿔 자격 없이 git을 돈다 — 로컬 명령에는 영향이 없지만 `MirrorSync`의 fetch는 사설 저장소에서 인증 실패(`mirror_sync_failed`)로 끝나고, 채번 전 최신화는 최대 60초 간격으로·미러 스위퍼는 6시간마다 익명 요청과 발급 요청을 다시 보낸다. 한도 격리는 `lease`를 막지 않으므로 사내 보고의 「rate limit 때문에 `tokenFor`가 `null`」은 이 경로가 아니다(`token-pool.test.ts`). 익명 git 요청은 설치의 REST 예산을 쓰지 않는다 | WP-120 / WP-020, FR-ING-004 | 관찰 (기존) | 없음(후속) | open — 후속 후보: 지연 인출이 막힌 명령에는 토큰을 청하지 않기, 발급 실패의 짧은 음성 캐시. 6.130장 |
+| DEV-813 | 2026-10-01 | **`GitHubClient.getCommitDetail`의 주석은 「찾을 수 없으면 `null`」인데 404에서 던진다.** 전송이 `!response.ok`를 `GitHubApiError('not_found')`로 던지고 이 메서드는 그것을 잡지 않는다. 그래서 미러에도 GHE에도 없는 커밋의 보강은 `commit_enrich_total{result="not_found"}`가 아니라 `failed`로 세어진다 | WP-120 / WP-067 | 문서·코드 불일치 (주석) | 없음(후속) | open — CR-139와 무관해 고치지 않았다. 6.130장 |
+| DEV-814 | 2026-10-01 | **문서의 `github_rate_limit_remaining{token}` 지표를 어느 서비스도 내보내지 않는다.** 비동기 문서 10장, 관측성 문서의 경보(10% 미만 30분, P3, RB-13), WP 체크리스트가 이 지표를 적지만 `TokenPool.remainingByInstallation()`을 부르는 코드가 없다. 운영자는 PR Search 지표로 설치의 한도 잔량을 볼 수 없다 — CR-139의 사내 확인(RUNBOOK 7.M)은 로그와 다른 지표로 대신한다 | WP-120 / FR-ING-004 AC-2, 관측성 | 문서·코드 불일치 (지표 미배선) | 없음(후속) | open — 후속 후보: 워커·search-api의 `/metrics`에 설치별 잔량 게이지. 6.130장 |
 | DEV-791 | 2026-09-29 | **web 프록시가 search-api에 닿지 못한 502를 기록하지 않는다.** `app/api/[...path]/route.ts`는 502 `UPSTREAM_UNAVAILABLE`에 자기 correlation ID를 싣고 주석에 「상관 ID로 로그에서 찾는다」고 적었지만 로그를 남기지 않는다 | 프런트엔드 10장·관측성 3.1 / WP-015 | 관찰 (기존) | 없음(후속) | open — CR-129 범위 밖이다(공개 search-api의 처리되지 않은 오류만 고쳤다) |
 | DEV-792 | 2026-09-29 | **통합 시험 전량에서 `cancel-race.test.ts`의 backfill 두 건이 간헐적으로 자기 잡을 집지 못한다.** CR-131 최종 게이트(`cfcd31f`, 새 DB)의 통합 전량에서 「backfill 잡을 집지 못했다」로 2건이 실패했다. 같은 트리에서 그 파일만 새 DB로 세 번 돌리면 24건 모두 통과했고, 전량을 새 DB로 다시 돌리면 2,402건 모두 통과했다. 파일은 순차 실행(`fileParallelism: false`)이고 실행 끝의 잡 표는 통과한 실행과 같은 모양이라 원인을 좁히지 못했다. 6.52.5장이 고친 모양(다른 시험이 남긴 `queued` 잡)과 증상이 같다 | 운영 잡 A-003 / WP-059 계열 시험 | 관찰 (시험 안정성) | 없음(후속) | open — 원인 미확인. 앞선 파일의 늦은 비동기 작업이 잡을 만들거나 집는지 확인할 후속 후보다 (6.122장) |
 | DEV-753 | 2026-09-23 | **백필로 들어온 병합된 PR의 머지 커밋 문서가 만들어지지 않았다.** `documents.ts`의 `buildCommitDocuments`가 머지 커밋 역할을 `pr.merged === true`로만 판정하는데 백필의 목록 끝점(`GET /pulls`)은 그 필드를 주지 않고 `merged_at`만 준다. 그런데 관계 채택은 같은 PR에 `merge` 근거를 세우므로 **정본은 연결을 말하는데 그 문서가 없다** — 관계 투영기가 `document_missing`으로 재시도하다 보류된다. 독립 검토가 잡았다 | FR-SRCH-002 AC-6 · FR-ING-005 / WP-008 · WP-019 · WP-101 | 기존 결함 | CR-116 | resolved (2026-09-23) — `derivePullRequestState`(CR-101)로 통일했다. PR 문서의 `state`·관계 채택·재색인이 모두 같은 판정을 쓴다 (6.107장) |
@@ -9968,3 +9979,83 @@ a11y·대비·E2E는 돌리지 않았다 — 두 커밋 모두 `apps/web`을 바
 **공개 저장소 점검.** 두 커밋의 diff와 사용자 보고서에서 알려진 사내 호스트 토큰은 0건이고, 주소는 `127.0.0.1`뿐이다.
 
 **한계.** 실제 GHES·PIPE 서버에서 `read.source.paths`를 부르지 않았다(PIPE 하네스의 대역 reader). PIPE가 `ReadOperationId`를 엄격하게 검증한다면 이 판을 배포하기 전에 갱신해야 한다(D-27). compose는 `MNUMBER_TAG_BLOCK_COOLDOWN_MS`·`MNUMBER_TAG_LIST_MAX_PAGES`를 여전히 넘기지 않는다. `agent-context/upstream-feedback.md`의 git show 결함은 미해결이다. 새 Release 발행과 이 판의 사내 적용은 범위 밖이다. PR의 CI와 병합 결과는 병합 기록이 적는다.
+
+### 6.130 미러 커밋 읽기의 promisor 원격·API 호출 제거 (2026-10-01, CR-139 / WP-120, DEV-810~814)
+
+**요청.** 사용자 지시(2026-10-01): `agent-context/upstream-feedback.md`의 미해결 항목(「`git show`가 promisor remote에 원격 접근하여 rate limit 악순환」)을 최신 `origin/main`에서 실제로 재현하고 고친다. 보고의 원인 설명을 그대로 확정하지 않고 재현으로 원인과 영향 범위를 확정한다. 착수 시점 main `bdf6416`의 CI(run 36745452061)는 verify·integration 모두 success였다. 번호는 병렬 세션과 조율해, 그 세션이 먼저 잡은 번호 다음인 CR-139·WP-120·DEV-810부터 썼다.
+
+**재현 환경.** 원격은 실제 `git upload-pack --stateless-rpc`를 HTTP로 서빙하는 가짜 원격이다 — 요청 수, `Authorization` 헤더의 존재와 기대값 일치, upload-pack 본문의 `want` 객체를 원격 쪽에서 센다(헤더 값은 기록하지 않는다). 미러는 `MirrorSync`와 같은 인자(`clone --mirror --filter=blob:none`, `-c http.extraHeader=…`)로 만들었다: bare, `remote.origin.promisor=true`, `remote.origin.partialclonefilter=blob:none`, 커밋 18·트리 17·blob 0(원본은 blob 16). 원본은 커밋 모양 13종이다 — 대조군 10종(루트, 수정만, 추가만, 정확한 이름 변경, 추가만 있는 병합, octopus, 여러 줄·빈·한글 메시지, 작성자≠커미터와 시간대 오프셋)과 유발 후보 3종(이름 변경+수정, 삭제+무관한 추가, 둘째 부모 기준으로 추가·삭제가 섞인 병합). 여기에 미러를 만든 뒤 원본에만 생긴 커밋과 기본 브랜치에 `.mailmap`을 더한 변형을 두었다. Git은 pilot.20·pilot.21 워커 이미지의 2.54.0(Alpine 3.24.1, 이미지 안에서 실행)과 호스트의 2.34.1이며, 둘 다 `GIT_NO_LAZY_FETCH`를 지킨다. 조건은 넷이다 — 지연 인출 차단(`GIT_NO_LAZY_FETCH=1`, 운영 기본)·허용과 토큰 헤더 있음·없음의 조합. 배포 기본값은 `MIRROR_ALLOW_BLOB_FETCH=false`, `SEQUENCE_GRAPH_MODE=mirror`다. 사내 GHE에는 접속하지 않았다. 재현 스크립트는 scratchpad에만 있다(저장소에는 같은 조건의 통합 시험을 넣었다).
+
+**수정 전 — 명령 단위 (Git 2.54.0, 호스트 2.34.1도 같다).**
+
+| 커밋 | `git show --no-patch` — 차단 | `git show` — 허용 | `git log -1 --no-patch` — 네 조건 |
+| --- | --- | --- | --- |
+| 대조군 10종 | 성공, 원격 0 | 성공, 원격 0 | 성공, 원격 0 |
+| 이름 변경+수정 · 삭제+추가 | exit 128 `could not fetch <blob> from promisor remote`(2.34.1은 `unable to read <blob>`), 원격 0 | 성공, 원격 2(`want` blob), blob 0→2 | 성공, 원격 0 |
+| 둘째 부모 기준 추가·삭제가 섞인 병합 | exit 128(형식 출력은 이미 나온 뒤), 원격 0 | 성공, 원격 2, blob 0→4 | 성공, 원격 0 |
+| 미러에 없는 커밋 | exit 128 `bad object`, 원격 0 | 성공, 원격 2(`want` commit) | 차단은 exit 128·원격 0, 허용은 원격 2(`want` commit) |
+| 기본 브랜치에 `.mailmap`(bare) | 성공 + stderr `unable to read mailmap object at HEAD:.mailmap`, 원격 0 | 성공, 원격 2, blob 0→1 | `git show`와 같다. `--no-use-mailmap`이면 원격 0·오류 없음 |
+
+원격이 모든 요청을 503으로 거절하면 `git log -1`은 원격 0으로 성공했고, 허용 조건의 `git show`는 원격 요청 뒤 exit 128이었다. 같은 커밋(이름 변경+수정)을 100번: `git show` 차단 0/100·원격 0, 허용 100/100·원격 2(첫 회에 blob을 받아 남긴 뒤 0), `git log -1` 100/100·원격 0. 필드 대조: 13종 모두 미러의 `git log -1`과 원본(blob 보유)의 옛 명령이 9개 필드에서 같다. 메일맵을 적용한 실행에서도 `%an`은 원래 이름이었다(`%aN`만 바뀐다) — `--no-use-mailmap`은 값을 바꾸지 않는다.
+
+**수정 전 — 실제 클래스.** main `bdf6416`에서 빌드한 `MirrorCommitGraph`를 워커 이미지 안에서 돌렸다(Git 2.54.0, HTTP 원격): 유발 커밋 셋이 운영 기본에서 `null`·원격 0, 허용에서 원격 2·blob 저장. `FallbackCommitGraph`는 폴백 3건(「미러가 커밋을 갖고 있지 않다」 — 미러는 그 커밋을 갖고 있다)과 API 호출 3건을 냈다. 같은 커밋 100번 중 0번 성공, `.mailmap` 미러에서 원격 2. 새 시험(Git 2.34.1)은 `mirror-promisor.test.ts` 26건 중 9건이 실패했다 — 유발 커밋 셋의 필드 대조(`null`), 모양 선언, 허용 조건 원격 4, 거절 조건, 100번, 로컬 커밋 폴백 3건, 메일맵 원격 2. `mnumber-mirror-readcommit.test.ts`는 4건 모두 실패했다 — 삭제+추가 squash 커밋의 폴백 1건, API 격리 중 서수 7에서 `profile_unverified`, 강제 재확인 10번에 폴백 10건, durable reconcile work가 `retry`·`last_reason: profile_unverified`·60초 뒤.
+
+**수정.** `readCommit`을 `git log -1 --no-patch --no-use-mailmap`으로 바꿨다(형식 문자열·해석 규칙 그대로). `log`는 주석 태그를 커밋으로 벗기므로 답의 SHA가 요청과 다르면 폴백하지 않고 `CommitGraphError`를 던진다 — 호출자는 커밋 SHA만 넘긴다. 옛 `show`는 태그 SHA에서 머리글 때문에 해석에 실패해 던지거나, 태그가 가리키는 커밋의 diff가 blob을 요구하면 `null`(폴백)이었다(검토 A F1). 트리 SHA는 빈 출력이라 `null`, 미러에 없는 blob SHA는 `bad object`라 `null`이다. `firstParentCommits`에 `--no-use-mailmap`을 붙였다. `--no-walk`는 쓰지 않았다 — `-1`만으로 원격 0이었다(부모 커밋 객체는 blobless 미러에 있다). `GIT_NO_LAZY_FETCH` 기본값과 `allowBlobFetch` 계약은 그대로이며, 미러 명령 가운데 blob을 요구하는 것은 다시 `patchId`(`diff-tree -p`) 하나다.
+
+**수정 뒤.** 같은 시험 26건·4건이 모두 통과한다. 워커 이미지(Git 2.54.0)에서 빌드 산출물로 다시 재면 유발 커밋 셋이 운영 기본·허용 모두 성공·원격 0·blob 0이고, 폴백 0·API 0, 100/100·원격 0, `.mailmap` 미러 원격 0·blob 0이다.
+
+| 지표 (mirror 모드 sequence, 삭제+추가 squash 커밋) | 수정 전 | 수정 뒤 |
+| --- | --- | --- |
+| 원격 Git 요청 (reconcile 중) | 0 | 0 |
+| GHE API 호출 (`readCommit` 폴백) | 한 회차 1, 강제 재확인 10번에 10 | 0 |
+| `graph_fallback` | 한 회차 1, 10번에 10 | 0 |
+| API 격리 중 결과 | 서수 7에서 `profile_unverified`로 멈춤 | 서수 1~7 모두 처리(A=1 … F=5) |
+| durable reconcile work | `retry`, `last_reason: profile_unverified`, 60초 뒤 | `done` |
+| `fetch_failed` | 0 (이 사유는 PR 근거 REST 실패다) | 0 |
+
+**rate-limit 사슬 (코드 조사).** 조사 에이전트가 file:line으로 확인했고, 핵심은 직접 다시 읽었다.
+
+- 격리와 `tokenFor` — `TokenPool.lease`(`packages/github/src/token-pool.ts:80`)는 격리를 보지 않고 `InstallationTokenProvider.getToken`의 캐시된 토큰(만료 5분 전까지)을 준다. 워커의 `tokenFor`(`apps/pipeline-worker/src/index.ts` 441·607·646행)가 `null`로 바꾸는 것은 `lease`가 던질 때뿐이다. A 공개 저장소 — 설계대로 자격 없이 fetch한다. B 사설 저장소의 발급 일시 실패 — `null`이 되고, 로컬 명령에는 영향이 없지만 `MirrorSync`의 fetch는 인증 실패(`mirror_sync_failed`)로 끝나 재시도마다 익명 요청과 발급 요청을 다시 보낸다(DEV-812). C 격리 — `null`이 되지 않는다(`token-pool.test.ts`). D App 설정 없음 — mirror 역할은 처음부터 자격 없이 돌고, sequence 역할은 JWT를 만들지 못해 호출마다 `null`이며 네트워크 요청은 없다. B의 익명 git 요청은 설치의 REST 예산을 쓰지 않으므로 이번 사슬을 끊는 데 필요하지 않아 DEV-812로 분리했다.
+- 격리 중 REST — `GitHubTransport`가 보내기 전에 `rate_limited`로 던진다. 폴백은 잔량이 10% 위일 때만 예산을 깎는다.
+- 커밋 보강(JOB-MIR-002) — 유발 커밋마다 폴백 REST 1건. API가 답하면 스냅숏이 남아 끝나고, API가 던지면 보강 실패로 세어 24시간 스윕이 다시 본다.
+- M 번호 근거(JOB-SEQ-004) — `readCommit`이 실패하면 `profile_unverified`, 60초 고정 재시도(상한 없음). 미확정 커밋은 재확인마다 폴백 REST 1건이 더해졌다. `fetch_failed`는 PR 근거 REST가 `GitHubApiError`로 실패한 것이고 1초~60초 backoff로 상한 없이 다시 본다.
+- PIPE — search-api는 자기 `TokenPool`을 쓰고(`apps/search-api/src/index.ts`), 공유하는 것은 GHE 설치의 한도 예산이다(compose의 같은 App·설치 설정). `findUserByLogin`이 던지면(격리 중 포함) `PERMISSION_UNAVAILABLE`(`ghe_user_lookup_failed`)이다(`integrations/pipe/identity-binding.ts`). 워커의 소비가 실제로 search-api를 격리로 몰았는지는 사내 수치로만 알 수 있다.
+- 부수 발견 — `getCommitDetail`의 404 주석·동작 불일치(DEV-813), 문서의 `github_rate_limit_remaining` 지표 미배선(DEV-814).
+
+**변이.** 대상 파일이 커밋된 상태에서 바이트 백업 → 치환 → 시험(`mirror-promisor`, `graph`, `mnumber-mirror-readcommit`) → 원복 → 해시 대조로 돌렸다. 요약은 줄 머리 `Tests`의 마지막 줄만 읽었다.
+
+| 변이 | 결과 |
+| --- | --- |
+| M1 `git log -1` → `git show` | 죽음 (68건 중 12건 실패) |
+| M2 `--no-patch` 제거 | **살아남음 — 동등 변이.** `git log`는 `-p`류를 받지 않으면 diff를 계산하지 않아 출력과 원격 요청이 같다. `--no-patch`는 의도를 적어 두는 인자다 |
+| M3 `-1` 제거 | 죽음 (19건) |
+| M4 형식에서 부모(`%P`) 제거 | 죽음 (25건) |
+| M5 형식에서 시각(`%aI`·`%cI`) 제거 | 죽음 (26건) |
+| M6 실패를 빈 메타데이터 성공으로 | 죽음 (3건 — 미러에 없는 커밋·미러 없는 저장소·기존 「없는 커밋은 `null`」) |
+| M7 원격 요청 단언(`total` 0) 9개 제거 + `git show` | 죽음 (26건 중 8건) — 다른 단언(필드 대조·blob 수·폴백 수)이 `show`를 따로 잡는다 |
+| M8 `GIT_NO_LAZY_FETCH` 기본값 제거 | 죽음 (4건 — 미러에 없는 커밋의 원격 0, patch-id `blob_fetch_disabled` 둘, 변경 경로 뒤 blob 0) |
+| M9 `readCommit`의 `--no-use-mailmap` 제거 | 죽음 (1건 — 메일맵 시험) |
+| M10 `firstParentCommits`의 `--no-use-mailmap` 제거 | 죽음 (1건 — 메일맵 시험) |
+| M11 답의 SHA ≠ 요청 SHA 검사 제거 | 죽음 (1건 — 주석 태그 시험) |
+| M12 `readCommit`이 읽기 전에 `ls-remote`를 부른다(값은 맞다) | 죽음 (26건 중 19건) |
+| M13 M12 + 원격 요청 단언 9개 제거 | **살아남음 — 기대한 결과.** 값은 맞으면서 원격만 부르는 회귀는 원격 요청 수 단언만이 막는다 |
+
+**게이트.** 최종 트리(`13b9d75`, 새 DB `prs_test_cr139_g2`, 격리 ES `prs-cr139-isolated`, Node 22.23.3, Git 2.34.1)의 전 계층 게이트이며, vitest 결과 캐시 없이 CI와 같은 규칙(파일 크기순)으로 돌렸다 — 작업 트리가 CRLF라 파일 크기와 순서는 CI(LF)와 조금 다르다. 실행 전후 작업 트리는 깨끗했다. 검토 반영 전 트리(`59050f8`, 새 DB `prs_test_cr139_g1`)의 게이트도 모두 초록이었다(단위 3,792·통합 2,503·회귀 533·E2E 224).
+
+| 단계 | 결과 |
+| --- | --- |
+| build · typecheck · lint · lint:deps | 모두 성공 |
+| 단위 | 3,792건 통과, 1건 건너뜀 · 파일 203개(1개 건너뜀) |
+| 통합 | 2,503건 통과 · 파일 160개 |
+| 회귀 | 533건 통과 · 파일 13개 |
+| a11y | 492건 통과 · 파일 26개 |
+| 대비 | 18쌍 확인, 실패 0 |
+| E2E | 224건 통과 |
+
+**문서 검증기.** 기준선(main `bdf6416`)과 이 트리의 오류·경고 목록이 기본(15건)·`--strict`(18건) 두 모드 모두 같다. WP 117 → 118, CR 137 → 138, DEV 794 → 799(개수)다.
+
+**독립 리뷰.** 읽기 전용 검토 에이전트 둘이 따로 봤다. **검토 A**(Git·promisor·부분 클론, 원격 요청, API 폴백, 한도 증폭)는 blobless 미러를 Git 2.54.0·2.34.1에서 따로 만들어 주장 1~4를 재현하고, 한도 사슬의 정정을 file:line으로 확인했다 — [상]·[중] 0건, [하] 3건. 태그 SHA에서의 옛 `show` 동작 서술은 반영했고(위 「수정」), 비커밋 SHA가 폴백 대신 오류가 되는 것은 CR에 이미 적은 의도라 정보로 두었으며, `ghe_user_lookup_failed`의 근거를 찾지 못했다는 지적은 `apps/search-api/src/integrations/pipe/identity-binding.ts:101`에 있어 CR에 경로를 달았다. **검토 B**(보안·자격 증명, 재시도, sequence 영향, 운영 문서, 시험의 힘)는 RUNBOOK 7.M의 서비스·포트·지표·로그 필드·표와 열을 compose·코드·마이그레이션과 대조했다 — [상]·[중] 0건, [하] 4건. 원격을 부르지 않는 명령에도 토큰이 git 인자에 실린다는 지적은 기존 동작이라 DEV-812에 덧붙이고 고치지 않았다. 메일맵 시험이 `firstParentCommits`의 값 불변을 단언하지 않는다는 지적은 원본 git이 낸 체인과 대조하게 고쳤고, 카운터 줄이 처음 셀 때 생긴다는 점은 RUNBOOK에 해석으로 적었으며, 시험 저장소 이름은 분명한 가상 이름으로 바꿨다. 반영 뒤 M9·M10·M11을 다시 돌려 모두 죽었다.
+
+**공개 저장소 점검.** diff와 커밋 메시지에 사내 호스트·저장소 이름·실제 사용자 ID·토큰이 없다. 시험 값은 `127.0.0.1`, `acme/example`·`acme/mailmap`·`acme/example1939`, `example.invalid`(기존 픽스처 기본값 `fixture@example.com`은 그대로), 가짜 토큰 `fake-installation-token-cr139`다. 원격 대역은 `Authorization` 값을 기록하지 않는다.
+
+**한계.** 사내 GHE의 한도 회복, worker-mirror·worker-sequence의 `graph_fallback` 감소, PIPE `PERMISSION_UNAVAILABLE`의 재발 여부는 `NOT RUN — internal environment required`다(RUNBOOK 7.M). 워커 로그와 사내 한도 수치가 없어, 사내 한도 소진 전체가 이 결함 하나 때문이었는지는 판정하지 않았다. DEV-812~814는 고치지 않았다. 새 Release 발행과 사내 적용은 범위 밖이다. PR의 CI와 병합 결과는 병합 기록이 적는다.
