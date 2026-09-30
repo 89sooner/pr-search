@@ -34,7 +34,7 @@ type WorkerMessage =
 let nextId = 1;
 
 /** Runs `job` in a fresh worker. Resolves `undefined` when the worker itself could not start (the caller falls back). */
-function inWorker<T>(job: Record<string, unknown>, signal: AbortSignal, onProgress?: (progress: TraceProgress) => void): Promise<T | undefined> {
+function inWorker<T>(job: { readonly type: 'diff' | 'trace' } & Record<string, unknown>, signal: AbortSignal, onProgress?: (progress: TraceProgress) => void): Promise<T | undefined> {
   return new Promise<T | undefined>((resolve, reject) => {
     let worker: Worker;
     try {
@@ -50,7 +50,8 @@ function inWorker<T>(job: Record<string, unknown>, signal: AbortSignal, onProgre
     const finish = (): void => { settled = true; clearTimeout(grace); signal.removeEventListener('abort', onAbort); worker.terminate(); };
     const onAbort = (): void => {
       if (settled) return;
-      if (!started) { finish(); reject(abortError()); return; }
+      // A diff runs synchronously in the worker and cannot answer a cancel message: end it at once. A trace sends back its partial result.
+      if (!started || job.type === 'diff') { finish(); reject(abortError()); return; }
       // Ask the job to stop and hand back its partial result; do not wait for it forever.
       worker.postMessage({ id, type: 'cancel' });
       grace = setTimeout(() => { if (!settled) { finish(); reject(abortError()); } }, CANCEL_GRACE_MS);

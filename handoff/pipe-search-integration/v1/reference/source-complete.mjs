@@ -76,6 +76,8 @@ export async function getCompleteFile(request, { repository, revision, path, off
     else if (window.sha !== pinned.sha || window.size !== pinned.size) throw changed('file', { offset: next });
     if (window.offset !== next) throw changed('file window', { offset: next });
     parts.push(window.text);
+    // A missing key ends the file (a server older than CR-138 answers only complete bodies) — never loop on it.
+    window.next_offset ??= null;
     if (window.next_offset === null) return { status: 'text', text: parts.join(''), size: window.size, sha: window.sha, reason: null, windows };
     if (window.next_offset <= next) throw new SourceReadError('file window did not advance', { status: 200, body: window, resume: { offset: next } });
     next = window.next_offset;
@@ -97,6 +99,7 @@ export async function getCompleteTree(request, { repository, ref, revision, tree
     else if (page.revision !== pinned.revision || page.tree_sha !== pinned.tree_sha) throw changed('tree', { revision: pinned.revision, treeSha: pinned.tree_sha, offset: next });
     entries.push(...page.entries);
     truncated ||= page.truncated;
+    page.next_offset ??= null;
     if (page.next_offset === null) return { revision: pinned.revision, tree_sha: pinned.tree_sha, entries, truncated };
     if (page.next_offset <= next) throw new SourceReadError('tree page did not advance', { status: 200, body: null, resume: { revision: pinned.revision, treeSha: pinned.tree_sha, offset: next } });
     next = page.next_offset;
@@ -112,6 +115,7 @@ export async function getAllPaths(request, { repository, revision, after = null 
     if (page.revision !== revision) throw changed('paths', { after: cursor });
     paths.push(...page.paths);
     incomplete ||= page.incomplete;
+    page.next_after ??= null;
     if (page.next_after === null) return { revision, paths, incomplete };
     if (page.next_after === cursor) throw new SourceReadError('path list did not advance', { status: 200, body: null, resume: { after: cursor } });
     cursor = page.next_after;
@@ -129,6 +133,7 @@ export async function getCompleteHistory(request, { repository, path = '', ref, 
     else if (body.revision !== revision) throw changed('history', { ref: revision, page: next });
     commits.push(...body.commits);
     pullRequestsUnavailable ||= body.pull_requests_unavailable === true;
+    body.next_page ??= null;
     if (body.next_page === null) return { revision, commits, pull_requests_unavailable: pullRequestsUnavailable };
     if (body.next_page <= next) throw new SourceReadError('history page did not advance', { status: 200, body: null, resume: { ref: revision, page: next } });
     next = body.next_page;
@@ -164,7 +169,7 @@ export async function getCompleteDiffFiles(request, { repository, pr, commit }, 
       files.push(file);
     }
     last = page;
-    next = page.next_page;
+    next = page.next_page ?? null;
   }
   if (!last.truncated) return { base: pinned.base, head: pinned.head, files, listing: 'rest', incomplete: false };
   let incomplete = false;
@@ -173,6 +178,7 @@ export async function getCompleteDiffFiles(request, { repository, pr, commit }, 
     if (page.head !== pinned.head || page.base !== pinned.base) throw changed('tree comparison', { listing: 'tree', after });
     for (const file of page.files) if (!covered.has(file.path)) { covered.add(file.path); files.push(file); }
     incomplete ||= page.truncated;
+    page.next_after ??= null;
     if (page.next_after === null) return { base: pinned.base, head: pinned.head, files, listing: 'rest+tree', incomplete };
     if (page.next_after === after) throw new SourceReadError('tree comparison did not advance', { status: 200, body: null, resume: { listing: 'tree', after } });
     after = page.next_after;

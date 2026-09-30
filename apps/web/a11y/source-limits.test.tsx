@@ -152,6 +152,11 @@ describe('CR-132 FR-SRC-003 Diff reads whole files and never fails on the old bu
     await user.click(screen.getByRole('button', { name: 'Continue loading files' }));
     await waitFor(() => { expect(screen.getByRole('heading', { name: /Changed files/ }).textContent).toBe('Changed files 250'); }, { timeout: 5000 });
     expect(pageCalls).toEqual(['1', '2', '2', '3']);
+    // The stopped request answers late: it must not move the finished list back to "loading".
+    release?.();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByRole('heading', { name: /Changed files/ }).textContent).toBe('Changed files 250');
+    expect(screen.queryByText(/Loading changed files/)).not.toBeInTheDocument();
   });
 
   it('FR-SRC-003 Diff with a pending load can be cancelled and retried, and never claims "no differences"', async () => {

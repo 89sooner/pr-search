@@ -286,7 +286,7 @@
     },
     {
       "path": "reference/source-complete.mjs",
-      "sha256": "dd66406214a8d96666a7122cd356bd862045d65526783c91d967dfd371bd9717",
+      "sha256": "c5ad9bb163f6ed6bc1c2a01017b5dc03bd0561507ac6b0c01f51ad1af0808ecf",
       "role": "reference — source 조회를 끝까지 읽는 반복 호출 참고 구현 (CR-138)"
     },
     {

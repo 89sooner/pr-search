@@ -203,7 +203,9 @@ export function useChangedFiles(repository: string, target: { readonly pr?: numb
             if (own.comparison !== null && (page.base !== own.comparison.base || page.head !== own.comparison.head)) { publish({ loading: false, changed: true, error: 'This pull request changed while its files were loading. Close and reopen the comparison.' }); return; }
             own.comparison ??= page;
             own.list = addListedFiles(own.list, page.files);
-            own.cursor = page.next_page !== null ? { phase: 'rest', page: page.next_page } : page.truncated ? { phase: 'tree', after: null } : { phase: 'done' };
+            // A missing key means no next page (never re-request page 1 forever).
+            const nextPage = page.next_page ?? null;
+            own.cursor = nextPage !== null ? { phase: 'rest', page: nextPage } : page.truncated ? { phase: 'tree', after: null } : { phase: 'done' };
           } else {
             const pinned = own.comparison!;
             const page: SourceComparison = await fetchSourceRetrying<SourceComparison>(sourceUrl(repository, 'diff', { listing: 'tree', head: pinned.head, base: pinned.base ?? undefined, after: own.cursor.after ?? undefined }), abort.signal, retry);

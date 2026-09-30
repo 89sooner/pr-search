@@ -153,6 +153,14 @@ describe('CR-138 FR-SRC-003/004 reads wait out transient failures and a stopped 
     expect((denied as SourceRequestError).status).toBe(503);
   }, 20_000);
 
+  it('CR-138 FR-SRC-003 a window without next_offset (a server older than CR-138) ends the file — one request, never a loop', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => { calls.push(input); return new Response(JSON.stringify({ status: 'text', text: 'whole\n', size: 6, sha: 'a'.repeat(40), reason: null }), { status: 200 }); }));
+    const file = await loadFileText('acme/payments', 'a', 'r1', { signal: new AbortController().signal });
+    expect(file).toMatchObject({ status: 'text', text: 'whole\n' });
+    expect(calls).toHaveLength(1);
+  });
+
   it('CR-138 FR-SRC-003 a read that keeps failing hands back what it read, and continuing asks for the failed window only', async () => {
     const { calls } = flakyServer({ r1: 'abcdefghij' }, { 'r1:8': { status: 429, retryAfter: '3600' } });
     const failed = await loadFileText('acme/payments', 'a', 'r1', { signal: new AbortController().signal }).then(() => null, (caught: unknown) => caught);

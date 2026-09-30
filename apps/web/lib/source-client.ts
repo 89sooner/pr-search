@@ -136,7 +136,8 @@ export async function loadFileText(repository: string, path: string, revision: s
     if (pinned === null) pinned = { sha: window.sha, size: window.size };
     else if (window.sha !== pinned.sha || window.size !== pinned.size) throw new Error('The file changed while it was read. Try again.');
     parts.push(window.text ?? '');
-    const next = window.next_offset;
+    // A response without the key (a server older than CR-138 answers only complete bodies) ends the file: never loop on it.
+    const next = window.next_offset ?? null;
     options.onProgress?.({ loaded: next ?? window.size ?? 0, total: window.size });
     if (next === null) return { status: 'text', text: parts.join(''), size: window.size, sha: window.sha, reason: null };
     // The server always moves forward; a window that does not is a protocol error, not a reason to loop.
