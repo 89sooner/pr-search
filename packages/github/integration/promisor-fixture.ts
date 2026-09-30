@@ -64,10 +64,10 @@ export const KOREAN_MESSAGE = '한글 커밋 메시지 — ✓ café 🚀\n\n본
 
 export const AUTHOR_NE_COMMITTER = {
   author: 'Ünïcødé 작성자',
-  authorEmail: 'author@example.com',
+  authorEmail: 'author@example.invalid',
   authoredAt: '2026-01-02T09:00:00+09:00',
   committer: 'Committer Lee',
-  committerEmail: 'committer@example.com',
+  committerEmail: 'committer@example.invalid',
   committedAt: '2026-01-02T01:30:00-05:30',
 } as const;
 
@@ -203,7 +203,7 @@ export async function createMailmapOrigin(source: PromisorOrigin): Promise<{ rea
   await run(dir, ['config', 'core.autocrlf', 'false'], FIXTURE_ENV);
   await run(dir, ['config', 'uploadpack.allowFilter', 'true'], FIXTURE_ENV);
   await run(dir, ['config', 'uploadpack.allowAnySHA1InWant', 'true'], FIXTURE_ENV);
-  await writeFile(join(dir, '.mailmap'), 'Mapped Name <mapped@example.com> fixture <fixture@example.com>\n', 'utf8');
+  await writeFile(join(dir, '.mailmap'), 'Mapped Name <mapped@example.invalid> fixture <fixture@example.com>\n', 'utf8');
   const commitEnv = { ...FIXTURE_ENV, GIT_AUTHOR_DATE: at(59), GIT_COMMITTER_DATE: at(59) };
   await run(dir, ['add', '.mailmap'], commitEnv);
   await run(dir, ['commit', '-q', '-m', 'add .mailmap at HEAD'], commitEnv);
