@@ -152,6 +152,8 @@ docker compose run --rm --no-deps -T -v "$PWD/bindings.json:/tmp/bindings.json:r
 | source 한 요청의 기한 | 120초 → 502 `SOURCE_UNAVAILABLE` | 원본과 같다 (CR-132, `SOURCE_REQUEST_DEADLINE_MS`) |
 | source blame의 GitHub 호출 기한 | 30초 → 502 `SOURCE_UNAVAILABLE`, 재시도 없음 | 원본과 같다 (CR-135, `SOURCE_BLAME_TIMEOUT_MS`) |
 | source blame의 GraphQL 동시성 | 프로세스당 2 (REST 조회와 따로 센다) | `@prs/github` `GRAPHQL_CONCURRENCY` (CR-135) |
+| source 경로 목록의 재귀 트리 호출 기한 | 45초 → 넘으면 디렉터리 단위 걷기로 넘어간다 | 원본과 같다 (CR-133·CR-137, `SOURCE_PATHS_RECURSIVE_TIMEOUT_MS`) |
+| source 경로 목록의 걷기 한 페이지 | 경로 5,000개 또는 디렉터리 호출 100번 — 적거나 빈 페이지도 `next_after`가 있으면 계속이다 | 원본과 같다 (CR-133·CR-137, `SOURCE_PATHS_WALK_PAGE`·`SOURCE_PATHS_WALK_TREE_CALLS`) |
 | GHE 사용자 조회 동시성 | 프로세스당 8 | `boundedDirectory` |
 | 접근 범위 GHE 갱신 동시성 | 프로세스당 20 | 원본 `AccessScopeResolver` |
 
@@ -163,6 +165,7 @@ docker compose run --rm --no-deps -T -v "$PWD/bindings.json:/tmp/bindings.json:r
 2. **재기동 전에 즉시 막아야 하면:** 4.3의 `credentials revoke --kind client --apply`로 모든 복제본에서 곧바로 거절합니다.
 3. **표를 지우지 않습니다.** 마이그레이션 033은 추가 전용이며, down 스크립트는 개발·시험용입니다. 운영에서 지우면 회수 표식과 이벤트 기록이 사라집니다.
 4. PIPE 쪽은 `PR_SEARCH_BFF_ENABLED=0`(PIPE 명명 규칙에 맞춘 이름)으로 BFF를 끄고 연결 비활성을 표시합니다.
+5. **CR-137 전 판으로 되돌리면** `/context`의 `operations`에서 `read.source.paths`가 사라지고 그 경로는 404입니다(prefix proxy가 없습니다). PIPE는 `operations`에 없는 조회를 부르지 않습니다(CONTRACT_DIFF D-27).
 
 ## 9. 활성화 전 smoke (이 세션에서 실행하지 않음 — NOT_RUN)
 

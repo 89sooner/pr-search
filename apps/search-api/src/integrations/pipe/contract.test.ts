@@ -21,7 +21,7 @@ import { DEFAULT_RESOLVE_LIMIT } from '../../resolve/service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '../../repositories/overview.js';
 import { SEARCH_TIMEOUT_MS } from '../../search/routes.js';
 import { DEFAULT_SIZE, MAX_SIZE, TRACK_TOTAL_HITS } from '../../search/service.js';
-import { GITHUB_BLOB_MAX_BYTES, SOURCE_MAX_BYTES, SOURCE_MAX_ENTRIES, SOURCE_MAX_LINES, SOURCE_TREE_DIFF_PAGE, SOURCE_TREE_PAGE_ENTRIES, SOURCE_WINDOW_BYTES } from '../../source/service.js';
+import { GITHUB_BLOB_MAX_BYTES, SOURCE_MAX_BYTES, SOURCE_MAX_ENTRIES, SOURCE_MAX_LINES, SOURCE_PATHS_RECURSIVE_TIMEOUT_MS, SOURCE_PATHS_WALK_PAGE, SOURCE_PATHS_WALK_TREE_CALLS, SOURCE_TREE_DIFF_PAGE, SOURCE_TREE_PAGE_ENTRIES, SOURCE_WINDOW_BYTES } from '../../source/service.js';
 import { SOURCE_REQUEST_DEADLINE_MS } from '../../source/routes.js';
 import { CLOCK_SKEW_SECONDS, MAX_ASSERTION_LENGTH, MAX_ASSERTION_TTL_SECONDS } from './assertion.js';
 import { PROTOCOL_VERSION, PSI_ERRORS, PSI_ERROR_CODES } from './errors.js';
@@ -332,6 +332,10 @@ describe('operation-map.json이 코드와 같다', () => {
     // CR-135: blame의 GitHub GraphQL 호출 기한과 GraphQL 전용 동시 상한(프로세스당).
     blame_call_timeout_ms: SOURCE_BLAME_TIMEOUT_MS,
     graphql_concurrency_max: GRAPHQL_CONCURRENCY,
+    // CR-137: PIPE에도 연 경로 목록(API-SRC-005)의 걷기 한 페이지·디렉터리 호출 수·재귀 호출 기한.
+    paths_walk_page: SOURCE_PATHS_WALK_PAGE,
+    paths_walk_tree_calls: SOURCE_PATHS_WALK_TREE_CALLS,
+    paths_recursive_timeout_ms: SOURCE_PATHS_RECURSIVE_TIMEOUT_MS,
   };
   const OPERATION_LIMITS: Record<string, Record<string, number>> = {
     'read.repositories': { limit_default: DEFAULT_PAGE_SIZE, limit_max: MAX_PAGE_SIZE },

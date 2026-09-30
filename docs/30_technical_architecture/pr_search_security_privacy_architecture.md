@@ -1,6 +1,6 @@
 # PR Search 보안 및 개인정보 아키텍처
 
-> 상태: review | 버전: v1.19 | 갱신일: 2026-09-29
+> 상태: review | 버전: v1.20 | 갱신일: 2026-10-01
 
 > CR-124 / FR-REL-003 AC-1: URL 참조의 승인 호스트는 배포 설정 `GHE_BASE_URL`의 호스트이며 코드에 두지 않는다(THR-036). 비어 있으면 URL 참조를 만들지 않는다 — 전에는 접속 설정의 대체값(`ghe.example.com`)을 승인했다. 단일 호스트에서 참조를 파생하는 두 역할(`worker-link`·`worker-batch`)은 이 주소 **하나만** 받고 Data App 자격을 받지 않는다 — 두 역할은 GHE에 접속하지 않는다.
 
@@ -17,6 +17,8 @@
 > CR-133: 경로 목록(API-SRC-005)도 같은 경계 안이다. 세션과 저장소 범위를 GHE 호출 전에 확인하고(범위 밖은 동일 404라 파일명·경로·개수가 드러나지 않는다), 본문은 읽지 않으며 경로 문자열은 응답과 브라우저 메모리에만 있다(서버 캐시·PG·ES·Redis·로그·브라우저 지속 저장소 없음). 입력은 `revision`(40자 SHA)과 `after`(비교에만 쓰는 커서, GitHub 경로로 보내지 않음)뿐이고 다른 키는 400이다. 감사는 페이지마다 `revision`·`after`와 관측 revision만 남긴다(경로 목록·검색어 없음). PIPE 연동 경로에는 없다.
 
 > CR-135 / ADR-027: blame(API-SRC-006·API-INT-015)도 같은 경계 안이며, 조회용 Data App 자격의 **유일한 GraphQL 호출**이다. 세션(PIPE는 grant와 사용자 범위 ∩ 허용 목록)과 저장소 범위를 GHE 호출 전에 확인하고(범위 밖은 동일 404, GraphQL 호출 0), 서버가 소유한 고정 query 하나를 조회 문서로만 보낸다 — `mutation`·`subscription` 문서는 토큰을 빌리기 전에 거절하고, 사용자나 PIPE가 query·endpoint·토큰을 보내는 경로(프록시)는 없다. 토큰은 헤더로만 싣고, 작성자 이메일은 묻지 않으며 GitHub가 주지 않은 계정은 채우지 않는다. 원격 오류 문구는 응답·로그에 싣지 않는다. 기본 꺼짐(`SOURCE_BLAME_ENABLED`)이고 꺼지면 GHE를 부르지 않으며 PIPE에 capability `source_blame:read`를 알리지 않는다. 응답은 no-store이고 본문이 없으며, 감사는 `source:blame:<저장소>`와 경로·리비전·결과 코드만 남긴다. 명시한 `GHE_GRAPHQL_URL`은 http(s)이고 query·fragment가 없어야 하지만 호스트는 검사하지 않는다 — 다른 호스트를 적으면 Data App 설치 토큰이 그리로 간다. 비워 두면 GHE 주소에서 도출한다.
+
+> CR-137: PIPE의 경로 목록(API-INT-016)도 같은 경계 안이다 — 세션 조회 API-SRC-005와 같은 실행이며, grant와 사용자 범위 ∩ client 허용 목록을 GHE 호출 전에 확인한다(범위 밖·미등록은 GHE를 부르지 않는 동일 404라 파일명·경로·개수가 드러나지 않는다). 입력은 `revision`·`after`뿐이고 연동 계층이 목록 밖·중복 key를 원본보다 먼저 400으로 거절한다. 본문은 읽지 않고 경로 문자열은 응답에만 있다. 새 capability는 없다(`source:read`).
 
 CR-079: WP-074는 기존 읽기 Data App만 사용한다. 신규 증거 proof의 허용 필드는 [설계](pr_search_wp074_design.md) 6절, 측정 read-only role·세션 파일·비식별 출력은 측정 가이드가 정본이다. 새 제목 쓰기 App, OIDC 정책 변경, 익명 조회, fixture를 production 직접 확정에 넣는 경로는 만들지 않는다. 기존 auth gate와 범위 밖=미등록 404를 유지한다.
 

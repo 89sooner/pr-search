@@ -9,6 +9,10 @@
  * 경로는 늘 등록된다. 부르면 원본 봉투의 404 `NOT_FOUND`(`detail.reason = feature_disabled`)이고 GHE를 부르지 않는다.
  * 게이트는 grant·엄격한 query 검사 뒤, 저장소 형식·접근 범위·파라미터 검사 앞이다. 이 하네스는 M 번호가 켜진 배포다
  * (하네스 기본값). blame이 켜진 배포는 `openapi.test.ts`·`parity.test.ts`가 본다.
+ *
+ * CR-137(2026-10-01)부터 조회 목록에는 게이트 없는 경로 목록 `read.source.paths`가 늘 있다 — 그래서 조회 목록의
+ * 기대값은 「CR-135 전의 10종 + `read.source.paths`」다(API 계약 8장의 두 번째 예외, D-27). 능력 목록은 그대로
+ * CR-135 전과 같다.
  */
 
 import { readFileSync } from 'node:fs';
@@ -34,6 +38,8 @@ const OPERATIONS_BEFORE_CR135 = [
   'read.source.diff',
   'read.source.file',
 ];
+/** CR-137 뒤 기본 배포(blame 꺼짐)의 `/context` 조회 목록 — CR-135 전의 10종 뒤에 경로 목록이 붙는다(게이트 없음, D-27). */
+const OPERATIONS_DEFAULT_AFTER_CR137 = [...OPERATIONS_BEFORE_CR135, 'read.source.paths'];
 
 const BLAME = `/read/source/acme%2Fpayments/blame?path=src%2Fpay%2Fretry.ts&revision=${SHA}`;
 const DISABLED = { code: 'NOT_FOUND', message: 'Blame is not enabled on this deployment.', detail: { reason: 'feature_disabled' } };
@@ -84,7 +90,7 @@ beforeEach(async () => {
 });
 
 describe('D-26 blame이 꺼진 배포(기본) — PSI-1.0 호환', () => {
-  it('CR-135 FR-INT-001 발급과 /context의 능력·조회 목록이 CR-135 전과 같다 — blame이 둘 다에서 빠진다', async () => {
+  it('CR-135 FR-INT-001 발급과 /context의 능력 목록은 CR-135 전과 같고, 조회 목록은 그 10종에 CR-137의 경로 목록만 더해진다 — blame이 둘 다에서 빠진다', async () => {
     const exchange = await h.exchange(await h.signAssertion({ user: USER_A, contextId: 'ctx-blame-off-000001' }));
     expect(exchange.status).toBe(200);
     const issued = exchange.json<{ protocol_version: string; access_token: string; capabilities: string[] }>();
@@ -94,7 +100,8 @@ describe('D-26 blame이 꺼진 배포(기본) — PSI-1.0 호환', () => {
     const context = (await h.get('/context', issued.access_token)).json<{ protocol_version: string; capabilities: string[]; operations: string[] }>();
     expect(context.protocol_version).toBe('PSI-1.0');
     expect(context.capabilities).toEqual(CAPABILITIES_BEFORE_CR135);
-    expect(context.operations).toEqual(OPERATIONS_BEFORE_CR135);
+    expect(context.operations).toEqual(OPERATIONS_DEFAULT_AFTER_CR137);
+    expect(context.operations).not.toContain('read.source.blame');
   });
 
   it('CR-135 FR-SRC-005 blame을 불러도 원본 봉투의 404 feature_disabled이고 GHE를 부르지 않는다 — 공개 경로와 본문이 같다', async () => {

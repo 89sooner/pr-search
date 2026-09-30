@@ -22,21 +22,21 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "1e9b0203f7430a9153b67037474d83b47e467203141f67eb106fd5346ffbe86f",
+  "contract_checksum": "8f327ebec1dbf583e2583556a5242c7f6d97d6e297f06344c7d33d5df40bcfa1",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "0c67045e74615084ea52173ca4a223d909397713bcbc21fcd237098fd330227f",
+      "sha256": "019a2c71e78f4807b1805db0ad29fa8d19d60d969dbb6c91136a55522a247224",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
       "path": "DEPLOYMENT_AND_ROLLBACK.md",
-      "sha256": "54d8021f871cdc6eda5a16ab081dcdd1a0af72880b2f2ade3e4b821e4b504c39",
+      "sha256": "d2c95fb81aab9f7a68f81c0f57300db7087564ba8e3ea8d62d01756f3051ba6d",
       "role": "guide — 배포·키 교체·회수·롤백"
     },
     {
       "path": "PIPE_INTEGRATION_HANDOFF.md",
-      "sha256": "2f17d44541b6083133e501f6693ced1311d179e7198f4a33b174acfa10e830a2",
+      "sha256": "42ff585988c45dc6c72360d8cec803a2653397f870a949e75e493af5c844105b",
       "role": "guide — 먼저 읽을 문서"
     },
     {
@@ -86,7 +86,7 @@
     },
     {
       "path": "examples/README.md",
-      "sha256": "4592493980fbd75ed1f815a4ba4159d39d17c02215cd3541e03fde2a055b3c9f",
+      "sha256": "e1bd737acbb8ccfef779e4b8b090ebdfd9ad52c48df02ecf4efb0ddd64b2faff",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -111,7 +111,7 @@
     },
     {
       "path": "examples/context.200.json",
-      "sha256": "785a20fb1726e310bad1741d32aaf40b2d1e7eaf21e74f76611552b0a36c5ca2",
+      "sha256": "52aa4e959bd8de5e9e73f72ce442ef11a4b3f4d463461508ea02c9777f3ce56b",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -235,6 +235,11 @@
       "role": "fixture — 합성 wire 예시"
     },
     {
+      "path": "examples/read.source.paths.200.json",
+      "sha256": "5092116dbb656d7549769598514c1e787cd677ce0df1107fc4f89c5111dc598c",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
       "path": "examples/read.source.tree.200.json",
       "sha256": "a09b7cf11baeb6e17ebaa958b9fd79c08dd9ab79c1197c7899724d40eaad22bd",
       "role": "fixture — 합성 wire 예시"
@@ -251,12 +256,12 @@
     },
     {
       "path": "operation-map.json",
-      "sha256": "9f70cb45c7ccab69a14427455f600748346a4da4622baa9ed7ce4ae866179153",
+      "sha256": "502b1d8a1f13d5d30ef3d18b312f72358d0a212625a23b71d10b094e97ceaf8f",
       "role": "contract — operation ↔ 원본 조회·query key·상한·오류 코드 (정본)"
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "1bac0596ce04515d71c9e9349c521092c342196f8b6ee6dc3457555fa8ad458f",
+      "sha256": "0722d92d15ba87a3597a3a54a5405736a3b0116ca20ab2902e799e46d5644dcc",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
     },
     {

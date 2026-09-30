@@ -134,6 +134,19 @@ export const INTEGRATION_OPERATIONS: readonly IntegrationOperation[] = [
     queryKeys: ['path', 'revision'],
     original: { apiId: 'API-SRC-006', method: 'GET', path: '/api/v1/source/:repository/blame' },
   },
+  /*
+   * CR-137 (FR-INT-001 AC-5): 고정 revision의 파일 경로 목록 — Files & folders 검색(CR-133, API-SRC-005)과 같은 실행이다.
+   * 게이트가 없어 모든 배포의 `/context.operations`에 있고, 새 능력 없이 `source:read`로 부른다(CONTRACT_DIFF D-27).
+   */
+  {
+    id: 'read.source.paths',
+    apiId: 'API-INT-016',
+    method: 'GET',
+    path: '/read/source/:repository/paths',
+    auth: 'mtls+grant',
+    queryKeys: ['revision', 'after'],
+    original: { apiId: 'API-SRC-005', method: 'GET', path: '/api/v1/source/:repository/paths' },
+  },
 ];
 
 export function operationById(id: string): IntegrationOperation {
@@ -146,7 +159,8 @@ export function operationById(id: string): IntegrationOperation {
 export const BASE_CAPABILITIES = ['search:read', 'source:read'] as const;
 export const MERGE_NUMBER_CAPABILITY = 'merge_number:read' as const;
 /**
- * source blame (CR-135). `SOURCE_BLAME_ENABLED=true`인 배포에서만 광고한다 — 꺼진 배포의 exchange·`/context`는 CR-135
- * 전과 한 글자도 다르지 않다(PSI-1.0 유지의 근거, CONTRACT_DIFF D-26). PIPE는 이 능력이 있을 때만 blame을 부른다.
+ * source blame (CR-135). `SOURCE_BLAME_ENABLED=true`인 배포에서만 광고한다 — 꺼진 배포의 exchange·`/context`에는
+ * blame이 없다(PSI-1.0 유지의 근거, CONTRACT_DIFF D-26). CR-137부터 `/context`의 조회 목록에는 게이트 없는
+ * `read.source.paths`가 늘 있다(D-27). PIPE는 이 능력이 있을 때만 blame을 부른다.
  */
 export const SOURCE_BLAME_CAPABILITY = 'source_blame:read' as const;

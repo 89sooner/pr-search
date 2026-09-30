@@ -19,7 +19,7 @@ PIPE 구현은 이 문서와 `pipe-integration-v1.openapi.yaml`을 함께 읽어
 | `/read/resolve` | 503 `PERMISSION_UNAVAILABLE` | 같다 |
 | `/read/pull-requests/…`, `/read/commits/…` | 503 `PERMISSION_UNAVAILABLE` | 같다 |
 | `/read/repositories` | 200, `items: []`, `next_cursor: null` | 저장소 목록은 행 단위로 거른다 |
-| `/read/source/…` 5종(blame은 D-26) | 404 `NOT_FOUND` | 저장소 가시성 판정이 먼저 거절한다. blame이 꺼진 배포는 그보다 앞의 게이트가 404 `feature_disabled`로 답한다 |
+| `/read/source/…` 6종(blame은 D-26, paths는 D-27) | 404 `NOT_FOUND` | 저장소 가시성 판정이 먼저 거절한다. blame이 꺼진 배포는 그보다 앞의 게이트가 404 `feature_disabled`로 답한다 |
 | `/read/merge-numbers/resolve` | 404 `NOT_FOUND` | 같다 |
 
 PIPE는 이 503을 **자동 재시도 대상으로 쓰면 안 됩니다.** 권한 서비스 장애와 "볼 수 있는 저장소가 없음"을 이 코드만으로는 구분할 수 없습니다. 화면은 먼저 `/read/repositories`를 부르고, 빈 목록이면 "연결된 저장소가 없음"을 안내하는 기존 Stage 1 흐름을 따르면 됩니다. 통합 시험 `parity.test.ts`의 「0개 저장소」 사례가 이 표 전체를 공개 경로와 대조합니다.
@@ -254,6 +254,33 @@ pr-search의 Time-lapse는 인접 리비전을 비교해 **추정한** 관측 �
 5. Time-lapse(추정)와 blame(GitHub가 계산한 귀속)을 섞어 보이지 않습니다. blame이 실패했을 때 추정 결과를 blame인 것처럼 대신 보이지 마십시오.
 
 합성 예시 `examples/read.source.blame.200.json`·`read.source.blame.404.feature_disabled.json`·`read.source.blame.501.json`을 더했습니다. **실제 GHES에서는 확인하지 못했습니다** — 사내 GHES 버전과 `Commit.blame` 지원, 필요한 GitHub App 권한(Contents read로 추정), 오류 본문의 실제 `type`·HTTP 상태, GraphQL 한도 설정, 큰 파일의 blame 지연은 GHE 대역으로만 검증했습니다(`TEST_RESULTS.md` 6장 NOT_RUN).
+
+## D-27 source 경로 목록 `read.source.paths` — 게이트 없는 가법 operation, PSI-1.0 유지 (CR-137, 2026-10-01)
+
+pr-search의 Files & folders 검색(CR-133)은 고정 revision의 파일 경로 목록 `GET /api/v1/source/{repository}/paths`(API-SRC-005)를 읽어 찾습니다. CR-133은 이 목록을 세션 조회로만 두었습니다(PIPE 경로는 404였습니다). CR-137부터 PIPE도 같은 목록을 읽습니다 — `GET /internal/integrations/pipe/v1/read/source/{repository}/paths?revision=&after=`(operation `read.source.paths`, API-INT-016, `mtls+grant`). 사용자가 0.1.0-pilot.21을 사내에 반입하면서 연동 코드에 이 조회를 더했고, pr-search는 계약·시험·문서를 그 코드에 맞췄습니다(사용자 결정 2026-10-01).
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| 조회 operation | 11종 | `read.source.paths` 추가. query key는 `revision`(필수, 40자 hex)·`after`(선택, 직전 응답의 `next_after`) 둘뿐입니다. 목록 밖 key·중복 key는 연동 계층의 400 `INVALID_REQUEST`이고, 형식이 틀린 `revision`·`after`(빈 값·4096자 초과·NUL)는 원본의 400 `INVALID_PARAMETER`입니다 |
+| 성공 본문 | 없음 | `SourcePaths`: `{ repository, revision, paths: [{ path, kind }], next_after, incomplete }`. `kind`는 `file`·`symlink`이고 디렉터리·서브모듈은 싣지 않습니다. 원본과 같으며 `correlation_id` 키와 파일 본문이 없습니다 |
+| `Capability` | `search:read`·`source:read`·(게이트) | 바뀌지 않습니다. 새 capability 없이 `source:read`로 부릅니다 |
+| `/context`의 `operations`(`ReadOperationId`) | 조회 10종(M 번호 게이트 반영) + 켜진 배포의 blame | **모든 배포**에서 `read.source.paths`가 더해집니다(게이트 없음) |
+| operation map `limits` | – | `paths_walk_page` 5000(걷기 한 페이지의 경로 수), `paths_walk_tree_calls` 100(걷기 한 페이지의 디렉터리 호출 수), `paths_recursive_timeout_ms` 45000(재귀 트리 호출 하나의 기한 — 넘으면 걷기로 넘어갑니다), `request_deadline_ms` 120000(D-25와 같습니다) |
+
+**끝을 판정하는 규칙.** 재귀 트리 한 번이 잘리지 않으면 전부가 한 응답에 오고 `next_after`는 `null`입니다. GitHub가 재귀 목록을 잘랐거나(10만 항목·7MB) 45초 안에 답하지 않았거나 5xx로 답하면, pr-search는 디렉터리 단위로 걸어 같은 경로 순서의 페이지를 줍니다. 한 페이지는 경로 5,000개 또는 디렉터리 호출 100번에서 멈추므로 **`paths`가 적거나 비어 있어도 `next_after`가 있으면 끝이 아닙니다.** 끝은 `next_after: null`뿐입니다. `incomplete: true`는 GitHub가 어떤 디렉터리 목록을 잘라 빠진 경로가 있을 수 있다는 뜻입니다.
+
+**접근 범위.** 검사 순서는 다른 source 조회와 같습니다: grant → 엄격한 query → 저장소 형식(400) → 접근 범위(사용자 범위 ∩ client 허용 목록 — 범위 밖·미등록은 GHE를 부르지 않는 동일 404) → 파라미터(400) → GHE. GitHub 실패의 봉투·코드도 다른 source 조회와 같습니다(원본 봉투).
+
+**PSI-1.0을 유지하는 근거 — API 계약 8장의 두 번째 예외.** 8장은 연동 계약을 바꿀 때 `protocol_version`을 함께 올리라고 합니다. D-26(blame)은 기본 배포의 exchange·`/context`가 바뀌지 않아서 예외가 되었지만, 이번에는 그 근거가 없습니다 — 게이트가 없어 **모든 배포의 `/context` `operations`에 새 값이 나타납니다.** 그래도 `protocol_version`을 올리지 않았습니다(사용자 결정 2026-10-01). 변경은 가법적이고(기존 operation·capability·응답 본문의 뜻은 그대로입니다), 버전을 올리면 버전 상수·예시·발급 시험·적합성 벡터와 PIPE 쪽 버전 검사가 함께 바뀌어야 하기 때문입니다. capability 목록은 바뀌지 않습니다. 통합 시험 `blame-disabled.test.ts`는 이제 「CR-135 전의 목록 + `read.source.paths`」를 기본 배포의 조회 목록으로 적어 두고 실제 mTLS 응답과 대조합니다. OpenAPI와 operation map이 바뀌었으므로 계약 checksum은 바뀝니다.
+
+**PIPE에 필요한 조치.**
+
+1. `ReadOperationId`를 엄격한 enum으로 검증한다면 **이 판의 pr-search를 배포하기 전에** `read.source.paths`를 받아들이도록 갱신합니다. 갱신하지 않으면 `/context` 응답을 거절할 수 있습니다.
+2. 이 조회를 쓰려면 `/context`의 `operations`에 `read.source.paths`가 있을 때만 부릅니다. CR-137 전 판에는 없고, 그 판에서 이 경로는 404입니다.
+3. `next_after`가 `null`이 될 때까지 이어 읽고, 끝나기 전에는 「결과 없음」이라고 단정하지 않습니다. `incomplete: true`면 목록이 완전하지 않을 수 있다고 안내합니다.
+4. `SourcePaths`를 엄격하게 검증한다면 새 스키마를 받아들이도록 갱신합니다.
+
+캡처한 예시 `examples/read.source.paths.200.json`을 더했고, 기본 배포를 캡처한 `examples/context.200.json`의 `operations`에 `read.source.paths`를 더했습니다. **실제 GHES에서는 이 경로를 부르지 않았습니다** — PIPE 하네스의 대역 source reader로만 검증했습니다. 경로 목록 자체의 GitHub 동작(재귀·걷기·잘림)은 세션 조회 API-SRC-005와 같은 실행이며 CR-133이 검증한 그대로입니다.
 
 ## 확인하지 못한 것
 

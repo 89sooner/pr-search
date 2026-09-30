@@ -13,7 +13,7 @@ let h: Harness;
 let grantA: string;
 
 beforeAll(async () => {
-  // source blame 기능 게이트를 켠 배포다(CR-135) — 조회 11종 모두의 parity를 본다. 꺼진 배포는 blame-disabled.test.ts.
+  // source blame 기능 게이트를 켠 배포다(CR-135) — 조회 12종(CR-137의 경로 목록 포함) 모두의 parity를 본다. 꺼진 배포는 blame-disabled.test.ts.
   h = await startHarness({ blameEnabled: true });
   await bind(h.pool, USER_B, OTHER_ISSUER);
 }, 180_000);
@@ -51,7 +51,7 @@ async function parity(publicUrl: string, readPath: string): Promise<{ status: nu
   return right;
 }
 
-describe('PSI-F01 11개 조회 operation parity (허용 목록 ⊇ 사용자 범위)', () => {
+describe('PSI-F01 12개 조회 operation parity (허용 목록 ⊇ 사용자 범위)', () => {
   it.each([
     ['repositories', '/api/v1/repositories?limit=50', '/read/repositories?limit=50', 200],
     ['search', '/api/v1/search?q=&size=50&facets=true', '/read/search?q=&size=50&facets=true', 200],
@@ -84,6 +84,10 @@ describe('PSI-F01 11개 조회 operation parity (허용 목록 ⊇ 사용자 범
     ['source blame', `/api/v1/source/acme%2Fpayments/blame?path=src%2Fpay%2Fretry.ts&revision=${SHA}`, `/read/source/acme%2Fpayments/blame?path=src%2Fpay%2Fretry.ts&revision=${SHA}`, 200],
     ['source blame 입력 오류', '/api/v1/source/acme%2Fpayments/blame?path=src%2Fpay%2Fretry.ts', '/read/source/acme%2Fpayments/blame?path=src%2Fpay%2Fretry.ts', 400],
     ['범위 밖 source blame', `/api/v1/source/other%2Fsecret/blame?path=README.md&revision=${SHA}`, `/read/source/other%2Fsecret/blame?path=README.md&revision=${SHA}`, 404],
+    // CR-137: 경로 목록(API-SRC-005 ↔ API-INT-016) — 성공·입력 오류(revision 없음)·범위 밖이 두 경로에서 같다.
+    ['source paths', `/api/v1/source/acme%2Fpayments/paths?revision=${SHA}`, `/read/source/acme%2Fpayments/paths?revision=${SHA}`, 200],
+    ['source paths 입력 오류', '/api/v1/source/acme%2Fpayments/paths', '/read/source/acme%2Fpayments/paths', 400],
+    ['범위 밖 source paths', `/api/v1/source/other%2Fsecret/paths?revision=${SHA}`, `/read/source/other%2Fsecret/paths?revision=${SHA}`, 404],
   ] as const)('%s', async (_label, publicUrl, readPath, status) => {
     const result = await parity(publicUrl, readPath);
     if (status !== undefined) expect(result.status).toBe(status);
@@ -166,6 +170,8 @@ describe('0개 저장소(교집합이 빈) 사용자 — 원본의 기본 거부
       ['/read/source/acme%2Fpayments/tree', '/api/v1/source/acme%2Fpayments/tree', 404, 'NOT_FOUND'],
       // CR-135: blame도 다른 source 조회처럼 저장소 가시성에서 404다(게이트가 켜진 이 하네스).
       [`/read/source/acme%2Fpayments/blame?path=README.md&revision=${SHA}`, `/api/v1/source/acme%2Fpayments/blame?path=README.md&revision=${SHA}`, 404, 'NOT_FOUND'],
+      // CR-137: 경로 목록도 저장소 가시성에서 404다.
+      [`/read/source/acme%2Fpayments/paths?revision=${SHA}`, `/api/v1/source/acme%2Fpayments/paths?revision=${SHA}`, 404, 'NOT_FOUND'],
       ['/read/merge-numbers/resolve?repository=acme/payments&base_branch=main&pr_number=1', '/api/v1/merge-numbers/resolve?repository=acme/payments&base_branch=main&pr_number=1', 404, 'NOT_FOUND'],
     ];
     for (const [readPath, publicUrl, status, errorCode] of cases) {
