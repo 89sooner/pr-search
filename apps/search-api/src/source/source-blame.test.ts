@@ -66,7 +66,7 @@ async function request(url: string, options: RequestOptions = {}) {
     branch: vi.fn().mockResolvedValue({ commit: { sha: SHA } }),
     commit: vi.fn().mockResolvedValue({ sha: SHA, tree: { sha: TREE }, parents: [], message: 'm', author: { name: 'a', date: '2026-09-29T00:00:00Z' } }),
     tree: vi.fn().mockResolvedValue({ sha: TREE, tree: [] }),
-    content: vi.fn().mockResolvedValue({ type: 'file', size: 3, sha: SHA, encoding: 'base64', content: Buffer.from('ok\n').toString('base64') }),
+    contentObject: vi.fn().mockResolvedValue({ type: 'file', size: 3, sha: SHA, encoding: 'base64', content: Buffer.from('ok\n').toString('base64') }),
   };
   const readerFactory = vi.fn(() => methods as unknown as GitHubSourceReader);
   const scopes = { resolve: vi.fn().mockResolvedValue({ kind: 'explicit', repositoryIds: [1] }) };

@@ -282,6 +282,38 @@ pr-search의 Files & folders 검색(CR-133)은 고정 revision의 파일 경로 
 
 캡처한 예시 `examples/read.source.paths.200.json`을 더했고, 기본 배포를 캡처한 `examples/context.200.json`의 `operations`에 `read.source.paths`를 더했습니다. **실제 GHES에서는 이 경로를 부르지 않았습니다** — PIPE 하네스의 대역 source reader로만 검증했습니다. 경로 목록 자체의 GitHub 동작(재귀·걷기·잘림)은 세션 조회 API-SRC-005와 같은 실행이며 CR-133이 검증한 그대로입니다.
 
+## D-28 source 조회의 남은 총량 상한을 없앤다 — `offset` 없는 파일·디렉터리도 창·페이지, `limits`는 작업량만, PSI-1.0 유지 (CR-138, 2026-10-01)
+
+CR-132(D-25)는 이어 읽기를 더했지만, `offset`을 보내지 않는 예전 호출에는 파일 256 KiB·4,000줄, 디렉터리 5,000개 상한을 그대로 두었습니다. CR-138부터 pr-search의 source 조회에는 **총량 상한이 없습니다.** `offset`을 보내지 않아도 첫 창·첫 페이지이고, 응답의 `next_offset`으로 끝까지 잇습니다. 변경 목록은 30번째 페이지의 `truncated`가 GitHub의 3,000개 원천 상한에 닿았는지를 제대로 알립니다(DEV-793). 한 번의 작업량(파일 1 MiB 창, 디렉터리 5,000개·이력 50개·변경 목록 100개·트리 비교 1,000개·경로 5,000개 페이지)과 한 요청의 기한(120초)은 그대로이고, 한 HTTP 응답에 전부를 합쳐 주는 경로는 만들지 않았습니다.
+
+| 자리 | 전 | 후 |
+|---|---|---|
+| `read.source.file`, `offset` 없음 | 256 KiB·4,000줄을 넘으면 200 `too_large`. 1MB를 넘는 파일은 GitHub가 기본 미디어 타입에 준 403이 권한 오류로 분류되어 503 `SOURCE_PERMISSION_REQUIRED` | offset 0의 창입니다. 1 MiB에 들면 완전한 본문(`next_offset: null`), 넘으면 첫 창과 `next_offset`입니다 |
+| `read.source.file`의 `too_large` | 256 KiB·4,000줄(예전 호출), GitHub API의 100MB | GitHub API가 본문을 주지 않는 100MB 초과뿐입니다. GitHub가 Contents를 403으로 거절하면 트리 항목의 크기로 가려, 크기 때문이면 `too_large`(`size`·`sha`는 트리 항목의 값), 아니면 원래 오류입니다 |
+| `read.source.tree`, `offset` 없음 | 정렬 전 앞 5,000개에서 자르고 `truncated: true` | 정렬한 첫 페이지(5,000개)와 `next_offset`. `truncated`는 GitHub가 목록을 잘랐을 때뿐입니다 |
+| `read.source.diff` 30번째 페이지의 `truncated` | GitHub가 다음 링크를 줄 때만 true — GitHub는 3,000개에서 멈추며 링크를 주지 않으므로 잘린 목록도 false였습니다 | 다음 링크, PR의 `changed_files` > 3000, 커밋의 가득 찬 30번째 페이지 가운데 하나면 true입니다. 정확히 3,000개인 커밋도 true이고 `listing=tree`가 같은 목록을 줍니다 |
+| `SourceFile`의 `offset`·`next_offset` | 선택(`offset`을 보낸 요청에만) | 필수(늘 있습니다) |
+| `SourceTree`의 `tree_sha`·`offset`·`next_offset`·`total` | 선택(`offset`을 보낸 요청에만) | 필수(늘 있습니다) |
+| operation map | `limits`에 `entries_max` 5000, `file_bytes_max` 262144, `file_lines_max` 4000, `blob_bytes_max`, diff의 `page_max` 30 | 앞 셋을 지웠습니다. `blob_bytes_max`(file)와 `page_max`·새 `changed_files_max` 3000(diff)은 `upstream_limits`로 옮겼습니다 — GitHub API의 한계입니다. `limits`에는 한 요청·한 페이지·한 창의 작업량과 기한만 남습니다(`common.limits_meaning`) |
+| 참고 구현 | 없음 | `reference/source-complete.mjs`와 타입 `reference/source-complete.d.mts` — `getCompleteFile`·`getCompleteTree`·`getAllPaths`·`getCompleteHistory`·`getCompleteDiffFiles` |
+
+**무엇이 그대로이고 무엇의 뜻이 바뀌었나.** 256 KiB·4,000줄 이하 파일과 5,000개 이하 디렉터리의 응답 값은 전과 같습니다(키만 더해집니다). 전에 거절되던 파일(`too_large`·503)은 이제 본문을 받습니다. 두 경우에 **기존 필드의 뜻이 바뀝니다.** (1) 1 MiB를 넘는 파일의 `offset` 없는 응답은 `status: text`이지만 `text`는 첫 창뿐입니다. (2) 5,000개를 넘는 디렉터리의 `offset` 없는 응답은 `truncated: false`이지만 `entries`는 첫 5,000개뿐입니다. **`text`와 `entries`는 `next_offset`이 `null`일 때만 완전합니다.** `next_offset`을 보지 않는 클라이언트는 두 경우를 완전한 결과로 오해합니다. 뒤 창이 텍스트가 아니면(NUL 등) 그 창의 `status`가 `binary`입니다 — 앞 창의 텍스트를 완전한 본문으로 쓰지 마십시오.
+
+**PSI-1.0을 유지하는 근거 — API 계약 8장의 세 번째 예외(사용자 결정 2026-10-01).** 이번 변경은 가법적이지 않습니다(위 두 경우). 그래도 `protocol_version`을 올리지 않았습니다. D-27과 같이 버전을 올리면 버전 상수·예시·발급 시험·적합성 벡터와 PIPE 쪽 버전 검사가 함께 바뀌어야 하고, 뜻이 바뀌는 응답은 전에 거절되거나 절삭 표시가 붙던 것뿐이기 때문입니다. 대가는 아래 1번 조치입니다. OpenAPI와 operation map이 바뀌었으므로 계약 checksum은 바뀝니다.
+
+**PIPE에 필요한 조치.**
+
+1. **이 판의 pr-search를 켜기 전에** 파일·트리 응답의 `next_offset`을 따라 끝까지 읽도록 갱신합니다(`getCompleteFile`·`getCompleteTree`). 갱신하지 않으면 큰 파일의 첫 창, 큰 디렉터리의 첫 5,000개를 전부로 다룹니다.
+2. `SourceFile`·`SourceTree`를 엄격하게 검증한다면 새로 필수가 된 키를 받아들입니다(값은 전에도 `offset`을 보내면 오던 것입니다).
+3. 변경 목록이 완전해야 하면 30번째 페이지의 `truncated`가 참일 때 같은 `base`·`head`로 `listing=tree`를 `next_after`가 `null`이 될 때까지 읽습니다(`getCompleteDiffFiles`). GitHub 목록에 있던 파일은 줄 수·이전 경로가 그대로이고, 트리 비교로만 안 파일은 그 값이 `null`입니다.
+4. 창·페이지를 이을 때는 앞 응답이 고정한 값(`revision`·`tree_sha`·`head`·`base`, 파일의 blob `sha`)을 넘기고, 다른 값이 오면 처음부터 다시 읽습니다.
+5. 429·502·503은 한도·일시 장애입니다. `Retry-After`를 지켜 같은 위치에서 다시 부르고, 이미 받은 창·페이지를 버리지 않습니다. 사용자·client별 동시성 상한은 여전히 PIPE BFF가 둡니다(D-14) — 끝까지 읽기는 호출 수가 많으므로 큰 파일·큰 이력은 순차로 읽기를 권합니다.
+6. operation map을 읽는 도구가 있다면 `limits`에서 사라진 세 키와 새 `upstream_limits`를 반영합니다.
+
+**남은 원천 한계.** GitHub API는 100MB를 넘는 blob의 본문을 주지 않습니다(Contents·Blobs 문서). pr-search의 미러는 blob이 없는 부분 클론이고(보안 THR-015) 지연 인출을 막으며 search-api에는 미러가 없어, 그 파일을 다른 길로 읽을 수 없습니다 — git 프로토콜로 일시 인출하는 대안은 결정 대기입니다(OD-020). GitHub 목록의 3,000개(`listing=tree`가 잇습니다)와 재귀 트리의 10만 항목·7MB(경로 목록이 디렉터리 단위로 걷습니다)는 제품이 이어 읽습니다. GitHub는 바이트 범위를 받지 않으므로, 창 k는 파일 앞 k MiB를 다시 받습니다 — 100MB 파일을 끝까지 읽으면 GHE에서 모두 5GB 남짓을 받고, 마지막 창은 한 요청의 기한 120초 안에 100MB를 받아야 합니다(GHE가 초당 약 1MB 이상 내 주어야 합니다).
+
+캡처 예시 `examples/read.source.file.200.json`·`read.source.tree.200.json`에 새 필수 키를 더했고, 합성 예시 `read.source.file.200.first-window.json`(offset 없는 1 MiB 초과 파일)·`read.source.file.200.too-large.json`(100MB 초과)·`read.source.diff.200.truncated.json`(30번째 페이지)을 더했습니다. `read.source.tree.200.truncated.json`은 이제 GHE가 목록을 자른 경우만 뜻합니다. **실제 GHES에서는 부르지 않았습니다** — 대형 픽스처는 GHE 대역(바이트 범위 없는 원시 본문, 3,000개 목록, 100MB 초과 거절 모형)과 실제 전송·실제 mTLS 리스너로 검증했습니다. 100MB를 넘는 파일에 GitHub가 주는 실제 상태 코드는 문서에 없어 대역은 403으로 두었습니다 — pr-search는 상태 코드가 아니라 트리 항목의 크기로 판정합니다.
+
 ## 확인하지 못한 것
 
 | 항목 | 상태 | 이유 |
@@ -292,4 +324,6 @@ pr-search의 Files & folders 검색(CR-133)은 고정 revision의 파일 경로 
 | 사내 GHES의 GraphQL `Commit.blame` 지원과 필요한 GitHub App 권한 | 미확인 | 실제 GHES에 닿지 않았다. `SOURCE_BLAME_ENABLED`를 켜기 전에 운영자가 확인한다 (D-26) |
 | 사내 GHES GraphQL의 실제 오류 모양(`type`·HTTP 상태)·한도 설정·큰 파일의 blame 지연 | 미확인 | GHE 대역으로만 검증했다 (D-26) |
 | PIPE JWT의 로그인 문맥·만료 추출 | PIPE 담당 | pr-search가 볼 수 없다 |
+| 사내 GHES가 100MB를 넘는 파일에 주는 실제 응답(상태 코드)과 저장소 업로드 한도(100MB를 넘는 blob이 있을 수 있는가) | 미확인 | GitHub 문서에 없다. 대역은 403으로 두었고 pr-search는 트리 항목의 크기로 판정한다 (D-28) |
+| 사내 GHES가 원시 본문을 내 주는 속도 — 100MB 가까운 파일의 마지막 창이 기한 120초 안에 끝나는가 | 미확인 | GHE 대역으로만 쟀다 (D-28) |
 | 사내 표준 위임 서버(OIDC Token Exchange 등)의 존재 | 미확인 | 있으면 ADR로 비교한다. 한쪽 저장소만 protocol을 바꾸지 않는다 |

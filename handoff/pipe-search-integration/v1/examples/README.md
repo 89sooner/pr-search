@@ -35,7 +35,8 @@
 | 회수 | `read.search.401.grant-revoked`, `read.search.403.context-revoked` — 자동 재발급 금지 |
 | 연동 계층 입력 거절 | `read.search.400.invalid-request` (중복 query key) |
 | 채번 전 M 번호 | `read.merge_numbers.resolve.409.no-sequence` — 원본 봉투 |
-| source 부분 결과 | `read.source.tree.200.truncated`, `read.source.history.200.pull-requests-unavailable` (합성) |
+| source 부분 결과 | `read.source.tree.200.truncated`(GHE가 목록을 잘랐을 때만 — CR-138부터 pr-search는 자르지 않는다), `read.source.history.200.pull-requests-unavailable` (합성) |
+| source를 끝까지 읽기 (CR-138) | `read.source.file.200.first-window`(offset 없는 1 MiB 초과 파일 — 첫 창과 `next_offset`), `read.source.file.200.too-large`(GitHub API가 주지 않는 100MB 초과 — 원천 한계), `read.source.diff.200.truncated`(GitHub 목록의 30번째 페이지 — `listing=tree`로 잇는다) (합성). 이어 읽는 방법은 `../reference/source-complete.mjs` |
 | 0건 검색의 완화 후보를 다 세지 못함 | `read.search.200.relaxation-incomplete` (합성, CR-128 — 빈 목록 + `relaxation_hints_incomplete: true`는 「제안 없음」이 아니다) |
 | blame이 꺼진 배포(기본) | `read.source.blame.404.feature_disabled` (합성, CR-135 — 원본 봉투, `detail.reason = feature_disabled`. 그 배포의 capabilities에 `source_blame:read`가 없다) |
 | GHES가 GraphQL blame을 제공하지 않음 | `read.source.blame.501` (합성, CR-135 — `SOURCE_BLAME_UNSUPPORTED`. 일시 장애·권한 부족·한도와 다르며 재시도해도 같다) |

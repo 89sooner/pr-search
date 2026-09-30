@@ -1,0 +1,35 @@
+{
+  "operation": "read.source.file",
+  "title": "offset 없이 부른 1 MiB 초과 파일 — 첫 창과 next_offset (CR-138)",
+  "captured": false,
+  "note": "CR-138 합성 예시다. offset을 보내지 않아도 크기·줄 수로 거절하지 않고 offset 0의 창을 준다. text는 next_offset이 null일 때만 파일 끝까지이므로 next_offset을 offset으로 넘겨 끝까지 잇는다(reference/source-complete.mjs의 getCompleteFile). 예시의 text는 앞 두 줄로 줄였다 — 실제 첫 창은 next_offset 바이트(줄바꿈 뒤에서 끊긴 1 MiB 이하)다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/file?path=generated%2Ftables.c&revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000033"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "generated/tables.c",
+      "status": "text",
+      "text": "static const int table[] = {\n  0, 1, 2,\n",
+      "size": 5242880,
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "reason": null,
+      "offset": 0,
+      "next_offset": 1048560
+    }
+  }
+}

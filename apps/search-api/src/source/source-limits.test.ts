@@ -15,7 +15,7 @@ import { resolveRepository } from '../sequence/space.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
 import { registerSourceRoutes } from './routes.js';
 import {
-  GITHUB_BLOB_MAX_BYTES, SOURCE_MAX_ENTRIES, SOURCE_TREE_DIFF_PAGE, SOURCE_TREE_PAGE_ENTRIES, SOURCE_WINDOW_BYTES, SourceRangeError,
+  GITHUB_BLOB_MAX_BYTES, SOURCE_TREE_DIFF_PAGE, SOURCE_TREE_PAGE_ENTRIES, SOURCE_WINDOW_BYTES, SourceRangeError,
   sourceComparison, sourceFileWindow, sourceTree, sourceTreeComparison, utf8Boundary,
 } from './service.js';
 
@@ -49,7 +49,7 @@ async function readAll(reader: GitHubSourceReader) {
     const window = await sourceFileWindow(reader, repo, SHA, 'big.txt', offset);
     expect(window.status).toBe('text');
     texts.push(window.text ?? '');
-    offset = window.next_offset ?? null;
+    offset = window.next_offset;
     if (offsets.length > 1000) throw new Error('did not converge');
   }
   return { text: texts.join(''), offsets };
@@ -165,7 +165,7 @@ describe('CR-132 FR-SRC-001 디렉터리 목록의 페이지', () => {
     const pages: SourceTree[] = []; let offset: number | null = 0; let treeSha = '';
     while (offset !== null) {
       const page = await sourceTree(reader, repo, { ref: SHA, path: '', ...(treeSha ? { treeSha, revision: SHA } : {}), offset });
-      pages.push(page); treeSha = page.tree_sha ?? ''; offset = page.next_offset ?? null;
+      pages.push(page); treeSha = page.tree_sha; offset = page.next_offset;
     }
     expect(pages.map(page => page.entries.length)).toEqual([SOURCE_TREE_PAGE_ENTRIES, SOURCE_TREE_PAGE_ENTRIES, 12_345 - 2 * SOURCE_TREE_PAGE_ENTRIES]);
     expect(pages.every(page => page.total === 12_345 && page.truncated === false && page.tree_sha === TREE)).toBe(true);
@@ -174,12 +174,6 @@ describe('CR-132 FR-SRC-001 디렉터리 목록의 페이지', () => {
     const firstFile = all.findIndex(entry => entry.kind !== 'directory');
     expect(all.slice(0, firstFile).every(entry => entry.kind === 'directory')).toBe(true);
     expect(all.slice(firstFile).every(entry => entry.kind !== 'directory')).toBe(true);
-  });
-  it('FR-SRC-001 offset을 보내지 않으면 예전처럼 앞 5,000개에서 자르고 truncated를 세운다', async () => {
-    const legacy = await sourceTree(treeReader(12_345).reader, repo, { ref: SHA, path: '' });
-    expect(legacy.entries).toHaveLength(SOURCE_MAX_ENTRIES);
-    expect(legacy.truncated).toBe(true);
-    expect(legacy).not.toHaveProperty('next_offset');
   });
   it('FR-SRC-001 truncated는 GitHub가 목록을 잘랐을 때뿐이고, 끝을 넘는 offset은 거절한다', async () => {
     expect((await sourceTree(treeReader(10, true).reader, repo, { ref: SHA, path: '', offset: 0 })).truncated).toBe(true);

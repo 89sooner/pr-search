@@ -1,0 +1,54 @@
+{
+  "operation": "read.source.diff",
+  "title": "GitHub 변경 목록의 30번째 페이지 — 3000개에서 잘렸을 수 있다 (CR-138)",
+  "captured": false,
+  "note": "CR-138 합성 예시다(DEV-793). GitHub는 변경 파일을 3000개까지만 나열하고 30번째 페이지에 다음 링크를 주지 않는다. truncated가 참이면 이 응답의 base·head로 listing=tree를 불러 next_after가 null이 될 때까지 잇는다(reference/source-complete.mjs의 getCompleteDiffFiles). 파일 목록은 한 줄로 줄였다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/diff?commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&page=30",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000035"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "base": null,
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "commit": {
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "parents": [],
+        "message": "m",
+        "author": "a",
+        "date": null
+      },
+      "pull_requests": [
+        {
+          "number": 1,
+          "title": "결제 재시도",
+          "body": null
+        }
+      ],
+      "pull_requests_unavailable": false,
+      "files": [
+        {
+          "path": "vendor/zlib/zutil.c",
+          "previous_path": null,
+          "status": "added",
+          "additions": 312,
+          "deletions": 0
+        }
+      ],
+      "next_page": null,
+      "truncated": true
+    }
+  }
+}

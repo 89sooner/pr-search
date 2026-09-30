@@ -1,16 +1,21 @@
 /** FR-SRC-001~004 / WP-085: transient, repository-authorized source browsing. */
 export interface SourceEntry { path: string; name: string; sha: string; kind: 'directory' | 'file' | 'symlink' | 'submodule'; size: number | null }
 /**
- * `offset`을 보낸 요청(CR-132)에만 `tree_sha`·`offset`·`next_offset`·`total`이 있다 — 정렬한 목록의 한 페이지이고,
- * `truncated`는 GitHub가 목록을 잘랐다는 뜻뿐이다. 보내지 않으면 예전처럼 앞 5,000개(정렬 전)에서 자른다.
+ * 정렬한 목록(디렉터리 먼저, 이름 순)의 한 페이지다(CR-132). CR-138부터 `offset`을 보내지 않은 요청도 첫 페이지이며 네 키가
+ * 늘 있다 — `entries`는 `next_offset`이 `null`일 때만 목록의 끝까지다. 다음 페이지는 `revision`·`tree_sha`로 고정해 청한다.
+ * `truncated`는 GitHub가 목록을 잘랐다는 뜻뿐이다(제품이 자르지 않는다).
  */
-export interface SourceTree { repository: string; ref: string; revision: string; path: string; entries: SourceEntry[]; truncated: boolean; tree_sha?: string; offset?: number; next_offset?: number | null; total?: number }
+export interface SourceTree { repository: string; ref: string; revision: string; path: string; entries: SourceEntry[]; truncated: boolean; tree_sha: string; offset: number; next_offset: number | null; total: number }
 export interface SourceCommit { sha: string; parents: string[]; message: string; author: string; date: string | null }
 /** History 행 전용 (CR-107). `pull_request_numbers`는 배열(빈 배열 포함)이면 확정, `null`이면 아직 미확정이다. */
 export interface SourceHistoryCommit extends SourceCommit { pull_request_numbers: number[] | null }
 export interface SourceHistory { repository: string; revision: string; path: string; commits: SourceHistoryCommit[]; next_page: number | null; pull_requests_unavailable?: boolean }
-/** `offset`을 보낸 요청(CR-132)은 본문의 한 창(`text`)과 다음 창의 바이트 위치(`next_offset`, 끝이면 `null`)를 받는다. */
-export interface SourceFile { repository: string; revision: string; path: string; status: 'text' | 'missing' | 'binary' | 'too_large' | 'unsupported'; text: string | null; size: number | null; sha: string | null; reason: string | null; offset?: number; next_offset?: number | null }
+/**
+ * 본문의 한 창(`text`, 최대 1 MiB)과 다음 창의 바이트 위치(`next_offset`, 끝이면 `null`)다(CR-132). CR-138부터 `offset`을 보내지
+ * 않은 요청도 offset 0의 창이며 두 키가 늘 있다 — `text`는 `next_offset`이 `null`일 때만 파일 끝까지다. `too_large`는 GitHub
+ * API가 본문을 주지 않는 100MB 초과뿐이다(원천 한계, 제품 상한 아님).
+ */
+export interface SourceFile { repository: string; revision: string; path: string; status: 'text' | 'missing' | 'binary' | 'too_large' | 'unsupported'; text: string | null; size: number | null; sha: string | null; reason: string | null; offset: number; next_offset: number | null }
 /** 트리 비교 목록(`listing=tree`, CR-132)은 줄 수를 모른다 — `additions`·`deletions`가 `null`이다. */
 export interface SourceChange { path: string; previous_path: string | null; status: string; additions: number | null; deletions: number | null }
 export interface SourcePullRequest { number: number; title: string; body: string | null }

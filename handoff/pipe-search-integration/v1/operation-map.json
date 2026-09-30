@@ -25,6 +25,7 @@
       "request_timeout_ms": 60000,
       "body_bytes_max": 16384
     },
+    "limits_meaning": "각 operation의 limits는 한 요청·한 페이지·한 창의 작업량과 기한이다 — 총량 상한이 아니다(CR-138, D-28). source 조회는 next_offset·next_page·next_after가 null이 될 때까지 이어 읽으면 끝까지다. upstream_limits는 GitHub API 자체의 한계다",
     "permission_unavailable": "503 PERMISSION_UNAVAILABLE은 조회마다 봉투가 다르다. 저장소 목록·발급은 연동 봉투(retryable: true)로, 나머지 조회는 원본 실행 함수가 잡아 원본 봉투(retryable 키 없음)로 낸다. BFF는 두 봉투 모두 error.code로 처리한다. 각 조회의 integration_error_codes에 이 코드가 있는지가 곧 연동 봉투로 나오는지다(통합 시험 openapi.test.ts가 실측으로 대조한다)"
   },
   "operations": [
@@ -243,7 +244,6 @@
       "original": { "api_id": "API-SRC-001", "method": "GET", "path": "/api/v1/source/{repository}/tree" },
       "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
       "limits": {
-        "entries_max": 5000,
         "tree_page_entries": 5000,
         "request_deadline_ms": 120000
       },
@@ -287,9 +287,12 @@
       "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
       "limits": {
         "files_per_page": 100,
-        "page_max": 30,
         "tree_listing_page": 1000,
         "request_deadline_ms": 120000
+      },
+      "upstream_limits": {
+        "page_max": 30,
+        "changed_files_max": 3000
       },
       "integration_error_codes": [
         "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",
@@ -309,11 +312,11 @@
       "original": { "api_id": "API-SRC-003", "method": "GET", "path": "/api/v1/source/{repository}/file" },
       "scope": "저장소 가시성(교집합)을 GHE 조회 전에 판정한다. 범위 밖·미등록·교집합이 빈 사용자는 404",
       "limits": {
-        "file_bytes_max": 262144,
-        "file_lines_max": 4000,
         "window_bytes": 1048576,
-        "blob_bytes_max": 104857600,
         "request_deadline_ms": 120000
+      },
+      "upstream_limits": {
+        "blob_bytes_max": 104857600
       },
       "integration_error_codes": [
         "CLIENT_AUTH_FAILED", "CLIENT_DISABLED", "INVALID_REQUEST", "GRANT_INVALID", "GRANT_EXPIRED",

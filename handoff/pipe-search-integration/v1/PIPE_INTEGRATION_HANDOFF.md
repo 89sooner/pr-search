@@ -9,12 +9,13 @@
 | 1 | 이 문서 | 상태, 경로, 자격, 요청·응답 규칙, 설정, 운영 입력 |
 | 2 | `pipe-integration-v1.openapi.yaml` | **정본 계약.** 경로 16개, 파라미터, 성공·오류 스키마 전부 |
 | 3 | `operation-map.json` | **정본 계약.** operation ↔ 원본 조회, query key, 상한, 연동 오류 코드 |
-| 4 | `CONTRACT_DIFF.md` | 제안 계약 PSI-1.0과 다른 자리·그 뒤의 변경 27개(D-01~D-27)와 확인하지 못한 것 |
+| 4 | `CONTRACT_DIFF.md` | 제안 계약 PSI-1.0과 다른 자리·그 뒤의 변경 28개(D-01~D-28)와 확인하지 못한 것 |
 | 5 | `conformance/README.md`, `conformance/vectors.json` | assertion 서명기 대조용 벡터 22개와 시험 공개키(비밀키는 공개 저장소라 넣지 않음) |
-| 6 | `examples/README.md`, `examples/*.json` | wire 예시 33개(정상·미매핑·권한 없음·범위 장애·만료·회수·부분 결과·blame 게이트·blame 미지원·경로 목록) |
+| 6 | `examples/README.md`, `examples/*.json` | wire 예시 36개(정상·미매핑·권한 없음·범위 장애·만료·회수·부분 결과·blame 게이트·blame 미지원·경로 목록·큰 파일의 첫 창·100MB 초과·GitHub 목록 30번째 페이지) |
 | 7 | `DEPLOYMENT_AND_ROLLBACK.md`, `deploy-examples/` | pr-search 쪽 배포·키 교체·긴급 회수·binding 운영·롤백 |
 | 8 | `TEST_RESULTS.md` | 실제로 실행한 명령과 수용 시험 ID별 결과, NOT_RUN |
 | 9 | `manifest.json` | 파일별 SHA-256과 계약 checksum |
+| – | `reference/` | source 조회를 끝까지 읽는 반복 호출 참고 구현과 타입(CR-138, D-28) — 파일 창·디렉터리 페이지·경로 목록·이력·변경 목록(GitHub 목록 뒤 트리 비교) |
 | – | `tools/` | OpenAPI 3.1 공식 스키마 사본과 manifest 생성기 |
 
 OpenAPI·operation map과 이 문서가 어긋나면 **OpenAPI·operation map이 이깁니다.** 두 파일은 pr-search의 계약 시험이 코드와 대조하고, 통합 시험이 실제 응답을 OpenAPI 스키마로 검증합니다.
@@ -172,6 +173,7 @@ pr-search는 요청마다 자기 UUID를 만들어 응답 머리글 `X-Correlati
 
 원본 DTO를 코드에서 추출하며 확인한 것입니다. OpenAPI 스키마가 이 동작을 그대로 적고 있습니다.
 
+- source 조회에는 총량 상한이 없습니다(CR-138, D-28). 한 응답은 한 창·한 페이지이고 `next_offset`·`next_page`·`next_after`가 `null`이 될 때까지 이어야 끝입니다 — `text`·`entries`는 `next_offset`이 `null`일 때만 완전합니다. `offset`을 보내지 않은 파일·디렉터리 요청도 첫 창·첫 페이지입니다. 변경 목록은 30번째 페이지의 `truncated`가 참이면 `listing=tree`로 잇습니다. 반복 방법은 `reference/source-complete.mjs`가 보여 줍니다.
 - source 성공 본문에는 `correlation_id`가 없고, source 오류 본문에는 `detail`이 없습니다 — 예외는 blame이 꺼진 배포의 404(`detail.reason = feature_disabled`, D-26)입니다. 429 `SOURCE_RATE_LIMITED`에는 GHE가 알려 준 경우 `Retry-After`(초)가 붙습니다 — 즉시 재시도하지 마십시오.
 - 검색의 `facets`는 정확히 `true`일 때만 `facets`·`facets_omitted`·`facets_status` 세 키가 옵니다. `kind:` 조건이 서로 상쇄되면 ES를 부르지 않아 `facets=true`여도 세 키가 빠집니다.
 - 파라미터 관용도가 조회마다 다릅니다. 저장소 목록의 `limit`은 범위 밖이면 400이고, 검색 `size`·해석 `limit`은 조용히 기본값이나 상한으로 바꿉니다. 커서는 저장소 목록이 trim하지 않고 검색은 trim합니다. 검색 `seq_epoch`의 빈 값은 "없음"이 아니라 400입니다.

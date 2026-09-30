@@ -1,0 +1,35 @@
+{
+  "operation": "read.source.file",
+  "title": "GitHub API가 본문을 주지 않는 100MB 초과 파일 — 원천 한계 (CR-138)",
+  "captured": false,
+  "note": "CR-138 합성 예시다. 크기로 거절하는 것은 이 경우뿐이다 — GitHub Contents·Blobs API가 100MB를 넘는 blob의 본문을 주지 않는다. size·sha는 트리 항목의 값이다.",
+  "request": {
+    "method": "GET",
+    "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/file?path=assets%2Fmodel.bin&revision=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "headers": {
+      "authorization": "Bearer <grant>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, no-store",
+      "pragma": "no-cache",
+      "x-content-type-options": "nosniff",
+      "x-correlation-id": "00000000-0000-4000-8000-000000000034"
+    },
+    "body": {
+      "repository": "acme/payments",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "path": "assets/model.bin",
+      "status": "too_large",
+      "text": null,
+      "size": 157286400,
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "reason": "GitHub does not serve files larger than 100 MB through its API.",
+      "offset": 0,
+      "next_offset": null
+    }
+  }
+}

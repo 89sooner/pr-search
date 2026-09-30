@@ -38,6 +38,7 @@ function roleOf(path) {
   if (path.startsWith('conformance/')) return 'fixture — assertion 적합성 벡터와 생성기';
   if (path.startsWith('deploy-examples/')) return 'example — 배포 설정 예시 (값은 자리표시자)';
   if (path.startsWith('tools/')) return 'tool — 계약 검증 도구 입력';
+  if (path.startsWith('reference/')) return 'reference — source 조회를 끝까지 읽는 반복 호출 참고 구현 (CR-138)';
   return 'other';
 }
 

@@ -146,9 +146,9 @@ docker compose run --rm --no-deps -T -v "$PWD/bindings.json:/tmp/bindings.json:r
 | 요청 처리 상한 | 60초 | private 리스너 `requestTimeout` |
 | 검색 ES 마감 | 3초 → 504 `SEARCH_TIMEOUT` | 원본과 같다 |
 | 검색 `size` | 기본 25, 최대 200 (초과 시 절삭) | 원본과 같다 |
-| source 파일 | 256KiB·4000줄, 초과 시 200 `status: too_large` | 원본과 같다 |
-| source 트리 | 5000 항목, 초과 시 `truncated: true` | 원본과 같다 |
-| source diff | 페이지 30까지 | 원본과 같다 |
+| source 파일 | 총량 상한 없음 — 한 응답은 1 MiB 이하의 창, `next_offset`으로 끝까지. 크기로 거절하는 것은 GitHub API가 주지 않는 100MB 초과(200 `status: too_large`)뿐 | 원본과 같다 (CR-138, `SOURCE_WINDOW_BYTES`·`GITHUB_BLOB_MAX_BYTES`) |
+| source 트리 | 총량 상한 없음 — 한 페이지 5000 항목, `next_offset`으로 끝까지. `truncated`는 GHE가 목록을 잘랐을 때뿐 | 원본과 같다 (CR-138, `SOURCE_TREE_PAGE_ENTRIES`) |
+| source diff | GitHub 목록은 100개씩 30페이지(GitHub의 3,000개 원천 상한). 30번째 페이지의 `truncated`가 참이면 `listing=tree`(1,000개씩)로 끝까지 | 원본과 같다 (CR-132·CR-138) |
 | source 한 요청의 기한 | 120초 → 502 `SOURCE_UNAVAILABLE` | 원본과 같다 (CR-132, `SOURCE_REQUEST_DEADLINE_MS`) |
 | source blame의 GitHub 호출 기한 | 30초 → 502 `SOURCE_UNAVAILABLE`, 재시도 없음 | 원본과 같다 (CR-135, `SOURCE_BLAME_TIMEOUT_MS`) |
 | source blame의 GraphQL 동시성 | 프로세스당 2 (REST 조회와 따로 센다) | `@prs/github` `GRAPHQL_CONCURRENCY` (CR-135) |
