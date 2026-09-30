@@ -1,6 +1,14 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.95 | 갱신일: 2026-10-01
+> 상태: review | 버전: v2.96 | 갱신일: 2026-10-01
+
+## WP-120 미러 커밋 읽기의 promisor 원격·API 호출 제거 (CR-139)
+
+- 요구사항: 없음(구현 결함 DEV-810·DEV-811). 대상 계약은 `CommitGraph.readCommit`(WP-067 / CR-038)과 THR-015(blobless 미러의 완화)이며, 소비자는 JOB-MIR-002 커밋 보강과 FR-SEQ-008 AC-9의 squash 프로파일 판정이다. 선행: WP-020(미러 그래프), WP-067(커밋 메타데이터), WP-074(mirror 모드 채번).
+- 범위: `packages/github/src/mirror-graph.ts`(`readCommit`의 명령, `firstParentCommits`의 메일맵), 계약 주석, 요청 수를 세는 smart HTTP 원격과 커밋 모양 픽스처, 미러·sequence 통합 시험, 판정 기록 단위 시험, 비동기 3.1장·백엔드·보안 THR-015·RUNBOOK 7.M·8장, `agent-context/upstream-feedback.md`의 상류 반영 주석, 원장.
+- 제외: DEV-812(발급 실패 캐시·로컬 명령의 토큰 요청)·DEV-813(`getCommitDetail` 404)·DEV-814(한도 잔량 지표)의 수정, API 폴백 구조, 새 Release 발행, 사내 적용, 사내 GHE·PIPE 재검증.
+- 완료 기준: 수정 전 코드에서 새 시험이 실패하는 것을 먼저 본다(원격 요청, 또는 `null`과 API 폴백). 수정 뒤에는 실제 blobless promisor 미러(HTTP 원격, 요청 수를 원격이 센다)에서 커밋 모양 13종의 `readCommit`이 원격 요청 0건으로 원본의 옛 명령 값과 필드마다 같고, 지연 인출을 허용하거나 원격이 모든 요청을 거절해도 같으며, 같은 커밋을 100번 읽어도 요청이 늘지 않는다. 미러에 없는 커밋은 여전히 `null`이고 원격을 부르지 않으며 폴백이 한 번 돈다. mirror 모드 M 번호 근거가 삭제+추가 squash 커밋에서 API를 부르지 않는다. patch-id는 여전히 blob을 요구한다. 변이가 시험을 죽이고, 전 계층 게이트가 초록이다.
+- 상태: in_progress — 브랜치 `fix/cr139-mirror-promisor-readcommit`. 검증은 원장 6.130장이다.
 
 ## WP-118 사내 반입 중 사용자 수정 — PIPE 경로 목록 조회와 배포 설정 (CR-137)
 
@@ -298,6 +306,7 @@
 
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
+| WP-120 | 미러 커밋 읽기의 promisor 원격·API 호출 제거 | correction (CR-139) | WP-020, WP-067, WP-074 | in_progress — 브랜치 `fix/cr139-mirror-promisor-readcommit`, 원장 6.130장 |
 | WP-118 | 사내 반입 중 사용자 수정 — PIPE 경로 목록·배포 설정 | 범위 변경 (CR-137) | WP-097, WP-114, WP-116 | in_progress — 브랜치 `feature/cr137-pipe-source-paths`, 원장 6.128장 |
 | WP-117 | PIPE 연동 인증 간소화 검토서 | 검토 (CR-136) | WP-097 | done — main `0d14990`(PR #260), 원장 6.127장 |
 | WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | WP-085, WP-097, WP-113 | done — main `311fdb0`(PR #259), 원장 6.126장 |
