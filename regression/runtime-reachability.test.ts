@@ -33,6 +33,11 @@ import { redact as redactGitHub } from '@prs/github';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (path: string): string => readFileSync(new URL(path, new URL('..', import.meta.url)), 'utf8');
+/**
+ * 코드 조각을 따옴표 모양(작은·큰따옴표)과 무관하게 찾는 정규식. 검사의 뜻은 「그 코드 경로가 있는가」이지 따옴표가 아니다 —
+ * dadcf55가 pipeline-worker 워커 넷의 따옴표를 큰따옴표로 바꿨다.
+ */
+const anyQuotes = (snippet: string): RegExp => new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/['"]/g, '[\'"]'));
 
 const WORKER_INDEX = read('apps/pipeline-worker/src/index.ts');
 const API_RUNTIME = read('apps/search-api/src/runtime.ts');
@@ -1173,8 +1178,8 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
 
   it('**커밋 보강이 자기 이벤트를 되받아 처리하지 않는다** (DEV-216)', () => {
     // 되먹임의 유일한 방어선이다. 이 줄이 없으면 보강 → 발행 → 보강 무한 루프다.
-    expect(COMMIT_ENRICH).toContain(
-      "if (name === EVENT_NAMES.commitMetadataReady) return { kind: 'ack' };",
+    expect(COMMIT_ENRICH).toMatch(
+      anyQuotes("if (name === EVENT_NAMES.commitMetadataReady) return { kind: 'ack' };"),
     );
   });
 
@@ -1223,7 +1228,7 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
 
   it('**해결된 접두 간선도 다시 판정한다** (PR #44 리뷰 P1)', () => {
     // `resolved`로 걸러 내면 한 번 잘못 붙은 간선을 다시 볼 방법이 없다.
-    expect(LINK).toContain("include: target.kind === 'commit' ? 'any' : 'unresolved'");
+    expect(LINK).toMatch(anyQuotes("include: target.kind === 'commit' ? 'any' : 'unresolved'"));
   });
 
   it('**재파생이 같은 파생 핸들러를 쓴다** — 두 번째 알고리즘을 만들지 않는다', () => {
@@ -1233,7 +1238,7 @@ describe('참조 간선 파생의 도달성 (WP-029 / CR-039)', () => {
 
   it('**재시도 예산을 핸들러가 집행한다** (DEV-228)', () => {
     expect(LINK).toContain('delivery_count >= MAX_RETRIES');
-    expect(LINK).toContain("kind: 'dead_letter'");
+    expect(LINK).toMatch(anyQuotes("kind: 'dead_letter'"));
   });
 
   it('**완전한 파생에 성공했을 때만 stale을 지운다** (DEV-220)', () => {
@@ -2843,7 +2848,7 @@ describe('작성자 소속 팀의 도달성과 계약 (WP-069 / CR-058)', () => 
   });
 
   it('**투영이 작성자 팀을 판정한다** — 부르지 않으면 필드가 영영 비어 있다', () => {
-    expect(PROJECT).toContain("from './author-teams.js'");
+    expect(PROJECT).toMatch(anyQuotes("from './author-teams.js'"));
     expectOrder(codeOf(PROJECT), 'resolveAuthorTeam(', 'buildUpsertRequests({');
     expect(codeOf(PROJECT)).toContain('authorTeams,');
   });

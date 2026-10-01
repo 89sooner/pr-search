@@ -9,7 +9,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { deadLetterRepo, rawEventRepo, type Pool, type RawEventInsert } from '@prs/db';
+import { deadLetterRepo, rawEventRepo, repositoryRepo, type Pool, type RawEventInsert } from '@prs/db';
 import {
   MAX_RETRIES,
   RedisStreamsEventBus,
@@ -49,6 +49,12 @@ const CORRELATION_ID = '0f0a1b2c-3d4e-5f60-7182-93a4b5c6d7e8';
 const REPOSITORY_ID = 4021;
 const PR_NUMBER = 1234;
 const RECEIVED_AT = new Date('2026-08-20T12:00:00.000Z');
+/**
+ * 보강은 등록된 active 저장소의 이벤트만 다룬다(dadcf55 — 저장소가 없거나 archived면 GHE를 부르지 않고 ack). 시험의
+ * 저장소를 active로 등록해 둔다. 보강은 저장소 ID와 상태만 보므로 이름은 다른 시험 파일의 `acme/payments`와 겹치지 않게
+ * 둔다(`(owner, name)`은 유일하다).
+ */
+const REPOSITORY = { repository_id: REPOSITORY_ID, owner: 'acme', name: 'payments-enrich-fixture', org_id: 1, visibility: 'private', sequence_branches: ['main'], mirror_enabled: false, status: 'active' } as const;
 
 let pool: Pool;
 let redis: Redis;
@@ -62,6 +68,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await pool.query('DELETE FROM repository WHERE repository_id = $1', [REPOSITORY_ID]);
   await bus.close();
   redis.disconnect();
   await pool.end();
@@ -71,6 +78,7 @@ beforeEach(async () => {
   await pool.query('TRUNCATE raw_event');
   await pool.query('TRUNCATE dead_letter');
   await redis.flushdb();
+  await repositoryRepo.upsertRepository(pool, REPOSITORY);
 });
 
 afterEach(async () => {
@@ -189,6 +197,29 @@ async function enrichedStreamLength(): Promise<number> {
   );
   return redis.xlen(stream);
 }
+
+describe('보강 대상이 아닌 저장소 (dadcf55)', () => {
+  it('저장소가 archived이면 보강하지 않고 ack한다 — GHE를 부르지 않고 이벤트를 내지 않는다', async () => {
+    await repositoryRepo.upsertRepository(pool, { ...REPOSITORY, status: 'archived' });
+    const deps = await buildDeps();
+    await insertRaw();
+    const outcome = await handleIngestEvent(deps, delivered());
+    expect(outcome).toMatchObject({ disposition: { kind: 'ack' }, reason: 'repository_not_active' });
+    expect(ghe!.requests.filter((request) => request.path.includes('/repos/'))).toHaveLength(0);
+    expect(await enrichedStreamLength()).toBe(0);
+    expect(await deadLetters()).toEqual([]);
+  });
+
+  it('등록되지 않은 저장소도 보강하지 않고 ack한다', async () => {
+    await pool.query('DELETE FROM repository WHERE repository_id = $1', [REPOSITORY_ID]);
+    const deps = await buildDeps();
+    await insertRaw();
+    const outcome = await handleIngestEvent(deps, delivered());
+    expect(outcome).toMatchObject({ disposition: { kind: 'ack' }, reason: 'repository_not_active' });
+    expect(ghe!.requests.filter((request) => request.path.includes('/repos/'))).toHaveLength(0);
+    expect(await enrichedStreamLength()).toBe(0);
+  });
+});
 
 describe('정상 보강 (FR-ING-004 AC-1)', () => {
   it('커밋·파일·리뷰를 병합해 EVT-ING-002를 발행한다', async () => {
