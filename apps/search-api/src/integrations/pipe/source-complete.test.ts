@@ -90,6 +90,15 @@ describe('CR-138 FR-INT-001 참고 구현의 재시도 — 한도·일시 장애
     await expect(getCompleteFile(cancelled.request, { repository: 'acme/payments', revision: SHA, path: 'a.c' }, { sleep })).rejects.toBe(abort);
     expect(cancelled.log).toHaveLength(2);
   });
+
+  it('CR-138 FR-SRC-003 보내지 못하는 요청이 끝내 실패하면 status 0과 원래 오류(cause)로 멈추고, 받은 창은 resume에 남는다', async () => {
+    const broken = new TypeError('fetch failed');
+    const { request, log } = fake((path) => fileWindow(offsetOf(path)), (path) => (offsetOf(path) === WINDOW ? broken : undefined));
+    const { waits, sleep } = sleeper();
+    const error = await failed(getCompleteFile(request, { repository: 'acme/payments', revision: SHA, path: 'a.c' }, { sleep, attempts: 3 }));
+    expect({ status: error.status, cause: error.cause, calls: log.length, waits }).toEqual({ status: 0, cause: broken, calls: 4, waits: [500, 1000] });
+    expect(error.resume).toMatchObject({ offset: WINDOW, parts: [TEXT.slice(0, WINDOW)] });
+  });
 });
 
 describe('CR-138 FR-INT-001 참고 구현의 이어 읽기 — 끝내 실패해도 받은 부분을 버리지 않는다', () => {

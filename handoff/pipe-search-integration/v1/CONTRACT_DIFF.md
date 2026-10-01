@@ -307,7 +307,7 @@ CR-132(D-25)는 이어 읽기를 더했지만, `offset`을 보내지 않는 예�
 2. `SourceFile`·`SourceTree`를 엄격하게 검증한다면 새로 필수가 된 키를 받아들입니다(값은 전에도 `offset`을 보내면 오던 것입니다).
 3. 변경 목록이 완전해야 하면 30번째 페이지의 `truncated`가 참일 때 같은 `base`·`head`로 `listing=tree`를 `next_after`가 `null`이 될 때까지 읽습니다(`getCompleteDiffFiles`). GitHub 목록에 있던 파일은 줄 수·이전 경로가 그대로이고, 트리 비교로만 안 파일은 그 값이 `null`입니다.
 4. 창·페이지를 이을 때는 앞 응답이 고정한 값(`revision`·`tree_sha`·`head`·`base`, 파일의 blob `sha`)을 넘기고, 다른 값이 오면 처음부터 다시 읽습니다.
-5. 429·502·503은 한도·일시 장애입니다. `Retry-After`를 지켜 같은 위치에서 다시 부르고, 이미 받은 창·페이지를 버리지 않습니다(참고 구현의 `resume`). 503 `SOURCE_PERMISSION_REQUIRED`는 GitHub App 권한 설정 문제라 다시 불러도 같습니다. 사용자·client별 동시성 상한은 여전히 PIPE BFF가 둡니다(D-14) — 끝까지 읽기는 호출 수가 많으므로 큰 파일·큰 이력은 순차로 읽기를 권합니다.
+5. 429·502·503은 한도·일시 장애입니다. `Retry-After`를 지켜 같은 위치에서 다시 부르고, 이미 받은 창·페이지를 버리지 않습니다(참고 구현의 `resume`). 503 `SOURCE_PERMISSION_REQUIRED`는 GitHub App 권한 설정 문제라 다시 불러도 같습니다. 참고 구현은 `request`가 던진 오류(연결 실패 등, 이름이 `AbortError`인 취소는 빼고)도 같은 횟수 안에서 다시 부르고, 끝내 실패하면 `status: 0`과 원래 오류(`cause`)를 싣습니다 — 호출자 코드의 오류도 그 횟수만큼 늦게 드러나므로 `request` 안의 오류는 먼저 고칩니다. 사용자·client별 동시성 상한은 여전히 PIPE BFF가 둡니다(D-14) — 끝까지 읽기는 호출 수가 많으므로 큰 파일·큰 이력은 순차로 읽기를 권합니다.
 6. operation map을 읽는 도구가 있다면 `limits`에서 사라진 세 키와 새 `upstream_limits`를 반영합니다.
 
 **남은 원천 한계.** GitHub API는 100MB를 넘는 blob의 본문을 주지 않습니다(Contents·Blobs 문서). pr-search의 미러는 blob이 없는 부분 클론이고(보안 THR-015) 지연 인출을 막으며 search-api에는 미러가 없어, 그 파일을 다른 길로 읽을 수 없습니다 — git 프로토콜로 일시 인출하는 대안은 결정 대기입니다(OD-020). GitHub 목록의 3,000개(`listing=tree`가 잇습니다)와 재귀 트리의 10만 항목·7MB(경로 목록이 디렉터리 단위로 걷습니다)는 제품이 이어 읽습니다. GitHub는 바이트 범위를 받지 않으므로, 창 k는 파일 앞 k MiB를 다시 받습니다 — 100MB 파일을 끝까지 읽으면 GHE에서 모두 5GB 남짓을 받고, 마지막 창은 한 요청의 기한 120초 안에 100MB를 받아야 합니다(GHE가 초당 약 1MB 이상 내 주어야 합니다).

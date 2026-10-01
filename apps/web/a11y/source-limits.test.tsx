@@ -6,7 +6,7 @@
  * `fetch` is a fake source API with the new windowed/paged/tree-listing answers. jsdom has no `Worker`, so the
  * analysis runs through the same job functions on the main thread (lib/source-compute-client.ts).
  */
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -79,6 +79,34 @@ function stubApi(api: Api): { calls: string[] } {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 const commit = (sha: string, message: string): SourceCommit => ({ sha, parents: [], message, author: 'kim', date: '2026-09-01T00:00:00Z' });
+/** Reports every observed element as visible, as a browser does when the reader scrolls to it (CR-138 auto-load). */
+function stubVisibleObserver(): Element[] {
+  const observed: Element[] = [];
+  class Visible {
+    readonly callback: IntersectionObserverCallback;
+    constructor(callback: IntersectionObserverCallback) { this.callback = callback; }
+    observe(target: Element): void { observed.push(target); queueMicrotask(() => { this.callback([{ isIntersecting: true, target } as unknown as IntersectionObserverEntry], this as unknown as IntersectionObserver); }); }
+    unobserve(): void { /* nothing to stop */ }
+    disconnect(): void { /* nothing to stop */ }
+    takeRecords(): IntersectionObserverEntry[] { return []; }
+  }
+  vi.stubGlobal('IntersectionObserver', Visible);
+  return observed;
+}
+/** An IntersectionObserver whose targets become visible only when the test says so (`show`) — like a reader scrolling to them. */
+function stubControlledObserver(): { show: () => void } {
+  const live = new Set<{ callback: IntersectionObserverCallback; targets: Element[]; self: unknown }>();
+  class Controlled {
+    readonly entry: { callback: IntersectionObserverCallback; targets: Element[]; self: unknown };
+    constructor(callback: IntersectionObserverCallback) { this.entry = { callback, targets: [], self: this }; live.add(this.entry); }
+    observe(target: Element): void { this.entry.targets.push(target); }
+    unobserve(): void { /* nothing to stop */ }
+    disconnect(): void { live.delete(this.entry); }
+    takeRecords(): IntersectionObserverEntry[] { return []; }
+  }
+  vi.stubGlobal('IntersectionObserver', Controlled);
+  return { show: () => { for (const entry of [...live]) entry.callback(entry.targets.map((target) => ({ isIntersecting: true, target }) as unknown as IntersectionObserverEntry), entry.self as IntersectionObserver); } };
+}
 
 describe('CR-132 FR-SRC-003 Diff reads whole files and never fails on the old budgets', () => {
   it('FR-SRC-003 a file larger than one window is compared to its last line, with the file read in windows', async () => {
@@ -323,23 +351,53 @@ describe('CR-138 FR-SRC-004 Time-lapse analyzes all history, with progress, and 
     const files: Record<string, string> = {};
     [...newest, ...older].forEach((item) => { files[`${item.sha}:app.c`] = `stable\n${item.message}\n`; });
     const { calls } = stubApi({ files, commits: newest, olderCommits: older });
-    const observed: Element[] = [];
-    /** Reports every observed element as visible, as a browser does when the reader scrolls to it. */
-    class Visible {
-      readonly callback: IntersectionObserverCallback;
-      constructor(callback: IntersectionObserverCallback) { this.callback = callback; }
-      observe(target: Element): void { observed.push(target); queueMicrotask(() => { this.callback([{ isIntersecting: true, target } as unknown as IntersectionObserverEntry], this as unknown as IntersectionObserver); }); }
-      unobserve(): void { /* nothing to stop */ }
-      disconnect(): void { /* nothing to stop */ }
-      takeRecords(): IntersectionObserverEntry[] { return []; }
-    }
-    vi.stubGlobal('IntersectionObserver', Visible);
+    const observed = stubVisibleObserver();
     render(<TimeLapseModal repository={REPO} path="app.c" revision="main" onClose={() => undefined} />);
     expect(await screen.findByText('All 45 revisions of this path are loaded.', undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(observed.some((element) => element.classList.contains('source-auto-load'))).toBe(true);
     const olderCall = calls.find((call) => call.includes('/history?') && call.includes('page=2'))!;
     expect(new URL(olderCall, 'http://localhost').searchParams.get('ref')).toBe(HEAD);
   });
+
+  it('CR-138 FR-SRC-004 a revision page that fails is not asked for again by itself — the reader retries it', async () => {
+    const newest = Array.from({ length: 30 }, (_, i) => commit(`${String(44 - i).padStart(2, '0')}`.padEnd(40, 'e'), `rev ${String(44 - i)}`));
+    const files: Record<string, string> = {};
+    newest.forEach((item) => { files[`${item.sha}:app.c`] = `stable\n${item.message}\n`; });
+    stubApi({ files, commits: newest, olderCommits: [] });
+    const real = globalThis.fetch;
+    const older: string[] = [];
+    vi.stubGlobal('fetch', (input: string) => {
+      // The failure answers a moment later, as a server does — the dialog first shows that it is loading.
+      if (input.includes('/history?') && input.includes('page=2')) { older.push(input); return new Promise<Response>((resolve) => { setTimeout(() => { resolve(new Response(JSON.stringify({ error: { code: 'SOURCE_UNAVAILABLE', message: 'Source data could not be loaded from GitHub. Please retry.' } }), { status: 500 })); }, 30); }); }
+      return real(input);
+    });
+    stubVisibleObserver();
+    render(<TimeLapseModal repository={REPO} path="app.c" revision="main" onClose={() => undefined} />);
+    expect(await screen.findByRole('button', { name: 'Retry older revisions' }, { timeout: 5000 })).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(older).toHaveLength(1);
+  });
+
+  it('CR-138 FR-SRC-004 while "All history" reads the history, reaching the end of the revision list does not start another read', async () => {
+    const historyPages = [Array.from({ length: 50 }, (_, i) => commit(String(120 - i).padStart(40, 'd'), `rev ${String(120 - i)}`)), Array.from({ length: 50 }, (_, i) => commit(String(70 - i).padStart(40, 'd'), `rev ${String(70 - i)}`)), Array.from({ length: 20 }, (_, i) => commit(String(20 - i).padStart(40, 'd'), `rev ${String(20 - i)}`))];
+    const files: Record<string, string> = {};
+    historyPages.flat().forEach((item) => { files[`${item.sha}:app.c`] = `stable\n${item.message}\n`; });
+    const { calls } = stubApi({ files, historyPages });
+    const real = globalThis.fetch;
+    // Older history pages take a moment, so "All history" is still reading when the reader reaches the list's end.
+    vi.stubGlobal('fetch', (input: string) => (input.includes('/history?') && input.includes('page=') ? new Promise<Response>((resolve) => { setTimeout(() => { resolve(real(input) as unknown as Response); }, 40); }) : real(input)));
+    const { show } = stubControlledObserver();
+    const user = userEvent.setup();
+    render(<TimeLapseModal repository={REPO} path="app.c" revision="main" onClose={() => undefined} />);
+    await screen.findByText('stable', undefined, { timeout: 5000 });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Analysis range' }), { target: { value: 'history' } });
+    await user.click(screen.getByRole('button', { name: 'Analyze all history' }));
+    await screen.findByText(/Loading history…/, undefined, { timeout: 5000 });
+    act(() => { show(); });
+    expect(await screen.findByText(/120 revisions analyzed\./, undefined, { timeout: 15_000 })).toBeInTheDocument();
+    const pages = calls.filter((call) => call.includes('/history?') && call.includes('page=')).map((call) => new URL(call, 'http://localhost').searchParams.get('page'));
+    expect(pages).toEqual(['2', '3']);
+  }, 60_000);
 
   it('CR-138 FR-SRC-004 "Analyze all history" is not offered for a revision that is not pinned to a commit SHA', async () => {
     const commits = [commit('9'.padStart(40, 'f'), 'rev 9')];
