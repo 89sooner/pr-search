@@ -2729,7 +2729,7 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] **DEV-797(open)** — 트리 비교 목록(`/diff?listing=tree`)의 한 페이지가 읽는 디렉터리 수에 상한이 없다. `/paths`의 걷기와 같은 상한을 거는 후속 후보.
 - [ ] **DEV-790·DEV-791(open)** — 웹 프록시가 search-api 응답의 `X-Correlation-Id`를 자기 값으로 덮고, search-api에 닿지 못한 502를 기록하지 않는다.
 - [ ] **DEV-792·DEV-798·DEV-799(open, 시험 안정성)** — `cancel-race` backfill의 간헐 실패, 수신 게이트웨이 부하 시험의 CI p95, 통합 시험 파일들의 저장소 잔재.
-- [ ] **DEV-795(open)** — 예전 파일 조회(`offset` 없음)의 1MB 초과 파일이 GHES 응답에 따라 권한 오류처럼 보일 수 있다(웹은 `offset` 경로라 영향 없음).
+- [x] **DEV-795** — 예전 파일 조회(`offset` 없음)의 1MB 초과 파일이 GHES 응답에 따라 권한 오류처럼 보일 수 있다(웹은 `offset` 경로라 영향 없음). CR-138(main `ecbeed1`)로 해소 — `offset` 없는 조회도 창 경로(object 메타 + blob 원시 창)로 읽는다.
 - [ ] **23차 자원 정리(사용자)** — 컨테이너 `prs-b8-postgres`·`prs-b8-redis`·`prs-b8-es`와 그 안의 시험 DB들, 워크트리 `cr129-errors`~`cr136-auth-review`와 기록 워크트리, 세션 scratchpad 넷.
 
 ## CR-139 뒤 남은 것 (2026-10-01)
@@ -2740,3 +2740,13 @@ ls packages/db/migrations/*.up.sql | tail -1     # 다음은 015
 - [ ] **DEV-813** — `getCommitDetail`의 「찾을 수 없으면 `null`」 주석과 404에서 던지는 동작.
 - [ ] **DEV-814** — 문서의 `github_rate_limit_remaining{token}` 지표를 워커·search-api `/metrics`에 배선(관측성 경보 RB-13의 전제).
 - [ ] **CR-139 자원 정리(사용자)** — 컨테이너 `prs-cr139-postgres`·`prs-cr139-redis`·`prs-cr139-es`, 워크트리 `cr139-mirror-promisor-readcommit`·`cr139-mirror-promisor-record`.
+
+## CR-138 뒤 남은 것 (2026-10-01)
+
+- [x] Source·Diff·Time-lapse의 남은 총량 제한 제거 — CR-138(PR #266 → `ecbeed1`). 원장 6.129장. 작업 중 `dadcf55`가 깨뜨린 시험은 PR #267(`92bbeb3`)이 고쳤다.
+- [ ] **다음 Release(사용자)** — CR-137·CR-138·CR-139를 함께 반입한다(2026-10-01 사용자 결정). 발행 지시를 기다린다.
+- [ ] **PIPE D-28 조치(PIPE 담당)** — `next_offset` 추종, 새 필수 키, `listing=tree`, 고정 값, 재시도, operation map. 이 판을 사내에서 켜기 전에 끝나야 한다(RUNBOOK 7.N).
+- [ ] **사내 확인(사용자)** — 이 변경이 들어간 Release를 반입한 뒤 RUNBOOK 7.N의 여섯 항목(1MB 초과 파일, 100MB 초과 파일의 실제 응답, 3,000개를 넘는 변경, 긴 이력의 All history, search-api 메모리와 다른 사용자의 응답, GHE 원시 본문 속도)을 확인하고 `agent-context/upstream-feedback.md`에 새 항목으로 적는다. 그 전까지 NOT RUN.
+- [ ] **OD-020(open)** — 100MB를 넘는 blob의 대체 경로(미러). 사내 GHES의 저장소 업로드 한도가 100MB를 넘는지 확인한 뒤 정한다.
+- [ ] **`dadcf55` 기록(사용자 판단)** — 보관 저장소 건너뛰기는 CR·WP·원장 기록 없이 main에 들어왔다. 시험은 PR #267이 맞췄다.
+- [ ] **CR-138 자원 정리(사용자)** — 컨테이너 `prs-cr138-postgres`·`prs-cr138-redis`·`prs-cr138-es`와 시험 DB 여섯, 워크트리 `cr138-source-unbounded`·`fix-enrich-active-repo`·`cr138-record`, scratchpad의 `base138` 워크트리.
