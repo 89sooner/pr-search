@@ -30,7 +30,7 @@ import {
   type IngestionEnriched,
   type IngestionProjected,
   type ProjectedEntityKind,
-} from '@prs/domain';
+} from "@prs/domain";
 import {
   MAX_RETRIES,
   TOPICS,
@@ -42,23 +42,23 @@ import {
   type HandlerDisposition,
   type SubscribeOptions,
   type Subscription,
-} from '@prs/bus';
-import { deadLetterRepo, rawEventRepo, repositoryRepo, type Pool, type RawEventRow } from '@prs/db';
-import { bulkUpsert, classifyFailure, type BulkItemOutcome, type UpsertRequest } from '@prs/es';
-import { withReindexWrite } from '@prs/db';
-import type { Client } from '@elastic/elasticsearch';
-import { buildUpsertRequests } from './documents.js';
-import { resolveAuthorTeam } from './author-teams.js';
-import { chainShasOf, linkObservationOf, recordProjectionSnapshot } from './snapshot.js';
-import { parseEnriched } from './enriched-payload.js';
-import { defaultSleep, retryFailedItems } from './index-retry.js';
-import type { WorkerMetrics } from './metrics.js';
+} from "@prs/bus";
+import { deadLetterRepo, rawEventRepo, repositoryRepo, type Pool, type RawEventRow } from "@prs/db";
+import { bulkUpsert, classifyFailure, type BulkItemOutcome, type UpsertRequest } from "@prs/es";
+import { withReindexWrite } from "@prs/db";
+import type { Client } from "@elastic/elasticsearch";
+import { buildUpsertRequests } from "./documents.js";
+import { resolveAuthorTeam } from "./author-teams.js";
+import { chainShasOf, linkObservationOf, recordProjectionSnapshot } from "./snapshot.js";
+import { parseEnriched } from "./enriched-payload.js";
+import { defaultSleep, retryFailedItems } from "./index-retry.js";
+import type { WorkerMetrics } from "./metrics.js";
 
 /** 실패 대기열·지표에서 이 단계를 가리키는 이름. */
-export const PROJECT_STAGE = 'project' as const;
+export const PROJECT_STAGE = "project" as const;
 
 export interface ProjectLogEntry {
-  readonly level: 'info' | 'warn' | 'error';
+  readonly level: "info" | "warn" | "error";
   readonly message: string;
   readonly delivery_id?: string;
   readonly correlation_id?: string;
@@ -93,7 +93,7 @@ export interface ProjectOutcome {
 }
 
 function entityKindOf(request: UpsertRequest): ProjectedEntityKind {
-  return request.alias === 'prs-commits' ? 'commit' : 'pull_request';
+  return request.alias === "prs-commits" ? "commit" : "pull_request";
 }
 
 /**
@@ -118,12 +118,12 @@ export async function handleEnrichedEvent(
   };
 
   const parsed = parseEnriched(event.payload);
-  if (parsed.kind === 'invalid') {
+  if (parsed.kind === "invalid") {
     // 실패 대기열은 `delivery_id`로 색인된다. payload가 깨져 그것조차 못 읽으면
     // 기록할 자리가 없다. 파티션을 영영 막지 않도록 로그만 남기고 ack한다.
-    log({ level: 'error', message: 'EVT-ING-002 계약 위반', reason: parsed.reason });
-    observe('malformed');
-    return { disposition: { kind: 'ack' }, projected: [], reason: parsed.reason };
+    log({ level: "error", message: "EVT-ING-002 계약 위반", reason: parsed.reason });
+    observe("malformed");
+    return { disposition: { kind: "ack" }, projected: [], reason: parsed.reason };
   }
 
   const enriched = parsed.enriched;
@@ -139,8 +139,8 @@ export async function handleEnrichedEvent(
     });
     deps.metrics.deadLettered.inc({ stage: PROJECT_STAGE, reason });
     log({
-      level: 'error',
-      message: '실패 대기열로 보냈다',
+      level: "error",
+      message: "실패 대기열로 보냈다",
       delivery_id: deliveryId,
       correlation_id: enriched.correlation_id,
       repository_id: enriched.repository_id,
@@ -148,7 +148,7 @@ export async function handleEnrichedEvent(
       reason,
       retry_count: retriesUsed,
     });
-    observe('dead_letter');
+    observe("dead_letter");
     return { disposition: deadLetter(detail), projected: [], reason };
   };
 
@@ -156,29 +156,43 @@ export async function handleEnrichedEvent(
   if (row === undefined) {
     // 문서 버전의 출처이자 `processed_at`을 찍을 행이다. 없으면 투영할 수 없다.
     if (retriesUsed < MAX_RETRIES) {
-      observe('retry');
+      observe("retry");
       return {
-        disposition: { kind: 'retry', reason: 'raw_event_missing' },
+        disposition: { kind: "retry", reason: "raw_event_missing" },
         projected: [],
-        reason: 'raw_event_missing',
+        reason: "raw_event_missing",
       };
     }
-    return fail('raw_event_missing', `원본 이벤트를 찾을 수 없다: ${deliveryId}`);
+    return fail("raw_event_missing", `원본 이벤트를 찾을 수 없다: ${deliveryId}`);
   }
 
   const repository = await repositoryRepo.findRepositoryById(deps.pool, enriched.repository_id);
   if (repository === undefined) {
     // FR-ING-009 AC-4. 원본은 `raw_event`에 남아 있어 등록 후 백필로 채울 수 있다.
     log({
-      level: 'info',
-      message: '미등록 저장소라 투영하지 않는다',
+      level: "info",
+      message: "미등록 저장소라 투영하지 않는다",
       delivery_id: deliveryId,
       correlation_id: enriched.correlation_id,
       repository_id: enriched.repository_id,
-      reason: 'repository_unregistered',
+      reason: "repository_unregistered",
     });
-    observe('skipped');
-    return { disposition: { kind: 'ack' }, projected: [], reason: 'repository_unregistered' };
+    observe("skipped");
+    return { disposition: { kind: "ack" }, projected: [], reason: "repository_unregistered" };
+  }
+
+  // archived 저장소는 커밋 메타데이터를 보강하지 않는다 - GHE API 호출을 줄인다.
+  if (repository.status !== "active") {
+    log({
+      level: "info",
+      message: "미등록 저장소라 투영하지 않는다",
+      delivery_id: deliveryId,
+      correlation_id: enriched.correlation_id,
+      repository_id: enriched.repository_id,
+      reason: "repository_not_archived",
+    });
+    observe("skipped");
+    return { disposition: { kind: "ack" }, projected: [], reason: "repository_not_archived" };
   }
 
   return projectDocuments(deps, enriched, row, repository, {
@@ -221,7 +235,9 @@ async function projectDocuments(
     {
       pool: deps.pool,
       ...(deps.now === undefined ? {} : { now: deps.now }),
-      ...(deps.authorTeamStalenessMs === undefined ? {} : { stalenessMs: deps.authorTeamStalenessMs }),
+      ...(deps.authorTeamStalenessMs === undefined
+        ? {}
+        : { stalenessMs: deps.authorTeamStalenessMs }),
     },
     repository.org_id,
     enriched.pull_request?.author,
@@ -232,7 +248,11 @@ async function projectDocuments(
   const documentVersion = row.received_at.getTime();
 
   // 체인 커밋에는 원본 커밋 문서를 쓰지 않는다 (CR-117 / FR-SRCH-002 AC-7). 백필과 같은 함수다.
-  const chainShas = await chainShasOf(deps.pool, repository.repository_id, enriched.source_commit_shas);
+  const chainShas = await chainShasOf(
+    deps.pool,
+    repository.repository_id,
+    enriched.source_commit_shas,
+  );
 
   const requests = buildUpsertRequests({
     enriched,
@@ -251,7 +271,7 @@ async function projectDocuments(
   await recordProjectionSnapshot(deps.pool, requests, {
     repositoryId: repository.repository_id,
     prNumber: enriched.pr_number,
-    source: 'webhook',
+    source: "webhook",
     // 관계 채택도 같은 트랜잭션이다 (CR-116 / WP-101). 재료는 보강 결과이지
     // 문서가 아니다 — 문서에는 구성 요소별 실패가 남지 않는다.
     linkObservation: linkObservationOf(enriched, documentVersion),
@@ -271,37 +291,44 @@ async function projectDocuments(
     });
   } catch (error) {
     // 벌크 자체가 실패했다 — 연결 끊김이거나 클러스터가 요청을 받지 못했다.
-    const shape = error as { statusCode?: number; body?: { error?: { type?: string; reason?: string } } };
+    const shape = error as {
+      statusCode?: number;
+      body?: { error?: { type?: string; reason?: string } };
+    };
     const status = shape.statusCode ?? 0;
     const detail = `벌크 요청 실패: ${String(status)} ${shape.body?.error?.type ?? String(error)}`;
-    if (classifyFailure(status, shape.body?.error) === 'rejected') {
-      return context.fail('bulk_rejected', detail);
+    if (classifyFailure(status, shape.body?.error) === "rejected") {
+      return context.fail("bulk_rejected", detail);
     }
     if (context.retriesUsed < MAX_RETRIES) {
-      context.observe('retry');
-      return { disposition: { kind: 'retry', reason: 'bulk_unavailable' }, projected: [], reason: detail };
+      context.observe("retry");
+      return {
+        disposition: { kind: "retry", reason: "bulk_unavailable" },
+        projected: [],
+        reason: detail,
+      };
     }
-    return context.fail('bulk_unavailable', detail);
+    return context.fail("bulk_unavailable", detail);
   }
 
-  const rejected = outcomes.filter((outcome) => outcome.kind === 'rejected');
+  const rejected = outcomes.filter((outcome) => outcome.kind === "rejected");
   if (rejected.length > 0) {
     // THR-010. 매핑에 없는 필드가 흘러들었거나 문서가 파싱되지 않았다.
     const detail = rejected
       .map((outcome) => `${outcome.request.alias}/${outcome.request.id}: ${outcome.reason}`)
-      .join('; ');
-    return context.fail('index_rejected', detail);
+      .join("; ");
+    return context.fail("index_rejected", detail);
   }
 
-  const retryable = outcomes.filter((outcome) => outcome.kind === 'retryable');
+  const retryable = outcomes.filter((outcome) => outcome.kind === "retryable");
   if (retryable.length > 0) {
     const detail = retryable
       .map((outcome) => `${outcome.request.alias}/${outcome.request.id}: ${outcome.reason}`)
-      .join('; ');
+      .join("; ");
     if (context.retriesUsed < MAX_RETRIES) {
       context.log({
-        level: 'warn',
-        message: '색인 일부가 실패해 표준 백오프로 재시도한다',
+        level: "warn",
+        message: "색인 일부가 실패해 표준 백오프로 재시도한다",
         delivery_id: context.deliveryId,
         correlation_id: enriched.correlation_id,
         repository_id: enriched.repository_id,
@@ -309,10 +336,14 @@ async function projectDocuments(
         reason: detail,
         retry_count: context.retriesUsed,
       });
-      context.observe('retry');
-      return { disposition: { kind: 'retry', reason: 'index_unavailable' }, projected: [], reason: detail };
+      context.observe("retry");
+      return {
+        disposition: { kind: "retry", reason: "index_unavailable" },
+        projected: [],
+        reason: detail,
+      };
     }
-    return context.fail('index_unavailable', detail);
+    return context.fail("index_unavailable", detail);
   }
 
   // 전부 색인됐다. 이제서야 원본에 처리 표식을 찍는다 — 순서가 반대면 색인이
@@ -327,12 +358,12 @@ async function projectDocuments(
   if (resolved > 0) {
     deps.metrics.deadLetterResolved.inc({ stage: PROJECT_STAGE }, resolved);
     context.log({
-      level: 'info',
-      message: '실패 대기열 항목을 닫았다',
+      level: "info",
+      message: "실패 대기열 항목을 닫았다",
       delivery_id: context.deliveryId,
       correlation_id: enriched.correlation_id,
       repository_id: enriched.repository_id,
-      reason: 'reprocess_succeeded',
+      reason: "reprocess_succeeded",
     });
   }
 
@@ -342,8 +373,8 @@ async function projectDocuments(
   const projected = await publishProjected(deps, enriched, row, outcomes);
 
   context.log({
-    level: 'info',
-    message: '투영 완료',
+    level: "info",
+    message: "투영 완료",
     delivery_id: context.deliveryId,
     correlation_id: enriched.correlation_id,
     repository_id: enriched.repository_id,
@@ -351,8 +382,8 @@ async function projectDocuments(
     documents: outcomes.length,
     lag_seconds: lagSeconds,
   });
-  context.observe('ok');
-  return { disposition: { kind: 'ack' }, projected };
+  context.observe("ok");
+  return { disposition: { kind: "ack" }, projected };
 }
 
 /**
@@ -371,7 +402,7 @@ async function publishProjected(
   const published: IngestionProjected[] = [];
 
   for (const outcome of outcomes) {
-    if (outcome.kind !== 'ok' || outcome.result === 'noop') continue;
+    if (outcome.kind !== "ok" || outcome.result === "noop") continue;
     const request = outcome.request;
     const payload: IngestionProjected = {
       repository_id: enriched.repository_id,
@@ -385,7 +416,11 @@ async function publishProjected(
       ingestPartitionKey(enriched.repository_id, enriched.delivery_id),
       {
         // 같은 전달의 같은 문서를 다시 투영하면 같은 ID가 나온다.
-        event_id: deterministicEventId(EVENT_NAMES.ingestionProjected, enriched.delivery_id, request.id),
+        event_id: deterministicEventId(
+          EVENT_NAMES.ingestionProjected,
+          enriched.delivery_id,
+          request.id,
+        ),
         event_name: EVENT_NAMES.ingestionProjected,
         correlation_id: row.correlation_id,
         occurred_at: now().toISOString(),

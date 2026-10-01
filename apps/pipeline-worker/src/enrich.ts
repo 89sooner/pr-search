@@ -28,7 +28,7 @@ import {
   type EnrichmentComponent,
   type EnrichmentError,
   type IngestionEnriched,
-} from '@prs/domain';
+} from "@prs/domain";
 import {
   MAX_RETRIES,
   TOPICS,
@@ -41,18 +41,18 @@ import {
   type HandlerDisposition,
   type SubscribeOptions,
   type Subscription,
-} from '@prs/bus';
-import { deadLetterRepo, rawEventRepo, type Pool, type RawEventRow } from '@prs/db';
-import { GitHubApiError, safeMessage, type GitHubClient } from '@prs/github';
-import { toEnrichedPullRequest } from './enriched-payload.js';
-import { extractTarget, type EnrichTarget } from './webhook-target.js';
-import type { WorkerMetrics } from './metrics.js';
+} from "@prs/bus";
+import { deadLetterRepo, rawEventRepo, repositoryRepo, type Pool, type RawEventRow } from "@prs/db";
+import { GitHubApiError, safeMessage, type GitHubClient } from "@prs/github";
+import { toEnrichedPullRequest } from "./enriched-payload.js";
+import { extractTarget, type EnrichTarget } from "./webhook-target.js";
+import type { WorkerMetrics } from "./metrics.js";
 
 /** 실패 대기열·지표에서 이 단계를 가리키는 이름. */
-export const ENRICH_STAGE = 'enrich' as const;
+export const ENRICH_STAGE = "enrich" as const;
 
 export interface EnrichLogEntry {
-  readonly level: 'info' | 'warn' | 'error';
+  readonly level: "info" | "warn" | "error";
   readonly message: string;
   readonly delivery_id?: string;
   readonly correlation_id?: string;
@@ -104,14 +104,14 @@ function describeFailure(component: EnrichmentComponent, error: unknown): Compon
   }
   // GitHub 계열이 아닌 실패(직렬화, 프로그래밍 오류)는 재시도해도 같다.
   return {
-    error: { component, kind: 'unexpected', message: safeMessage(error) },
+    error: { component, kind: "unexpected", message: safeMessage(error) },
     retryable: false,
     retryAt: undefined,
   };
 }
 
 function isNotFound(error: unknown): boolean {
-  return error instanceof GitHubApiError && error.kind === 'not_found';
+  return error instanceof GitHubApiError && error.kind === "not_found";
 }
 
 /** 여러 실패 중 가장 이른 회복 시각. 하나라도 있으면 그때까지 미룬다. */
@@ -148,22 +148,22 @@ export async function handleIngestEvent(
 
   const payload = event.payload;
   const deliveryId =
-    typeof payload === 'object' && payload !== null && 'delivery_id' in payload
+    typeof payload === "object" && payload !== null && "delivery_id" in payload
       ? (payload as { delivery_id?: unknown }).delivery_id
       : undefined;
 
-  if (typeof deliveryId !== 'string' || deliveryId === '') {
+  if (typeof deliveryId !== "string" || deliveryId === "") {
     // 실패 대기열은 `delivery_id`로 색인된다. 그것이 없으면 기록할 자리가
     // 없다. 파티션을 영영 막지 않도록 기록만 남기고 ack한다.
-    log({ level: 'error', message: 'delivery_id 없는 이벤트', reason: 'malformed_envelope' });
-    observe('malformed');
-    return { disposition: { kind: 'ack' }, reason: 'malformed_envelope' };
+    log({ level: "error", message: "delivery_id 없는 이벤트", reason: "malformed_envelope" });
+    observe("malformed");
+    return { disposition: { kind: "ack" }, reason: "malformed_envelope" };
   }
 
   // 실패 기록에 저장소를 함께 남긴다 — A-001의 저장소 필터가 그것으로 좁힌다
   // (CR-012). 봉투에 이미 있으므로 원본을 읽기 전에 실패해도 값이 있다.
   const repositoryId =
-    typeof payload === 'object' && payload !== null && 'repository_id' in payload
+    typeof payload === "object" && payload !== null && "repository_id" in payload
       ? (payload as { repository_id?: unknown }).repository_id
       : undefined;
 
@@ -171,20 +171,20 @@ export async function handleIngestEvent(
     await deadLetterRepo.recordDeadLetter(deps.pool, {
       deliveryId,
       stage: ENRICH_STAGE,
-      repositoryId: typeof repositoryId === 'number' ? repositoryId : null,
+      repositoryId: typeof repositoryId === "number" ? repositoryId : null,
       error: detail,
       retryCount: retriesUsed,
     });
     deps.metrics.deadLettered.inc({ stage: ENRICH_STAGE, reason });
     log({
-      level: 'error',
-      message: '실패 대기열로 보냈다',
+      level: "error",
+      message: "실패 대기열로 보냈다",
       delivery_id: deliveryId,
       correlation_id: event.correlation_id,
       reason,
       retry_count: retriesUsed,
     });
-    observe('dead_letter');
+    observe("dead_letter");
     return { disposition: deadLetter(detail), reason };
   };
 
@@ -193,35 +193,53 @@ export async function handleIngestEvent(
     // 게이트웨이는 저장한 뒤에 발행하므로 정상 경로에서는 있어야 한다. 복제
     // 지연 같은 일시적 원인일 수 있어 예산 안에서는 다시 시도한다.
     if (retriesUsed < MAX_RETRIES) {
-      observe('retry');
-      return { disposition: { kind: 'retry', reason: 'raw_event_missing' }, reason: 'raw_event_missing' };
+      observe("retry");
+      return {
+        disposition: { kind: "retry", reason: "raw_event_missing" },
+        reason: "raw_event_missing",
+      };
     }
-    return fail('raw_event_missing', `원본 이벤트를 찾을 수 없다: ${deliveryId}`);
+    return fail("raw_event_missing", `원본 이벤트를 찾을 수 없다: ${deliveryId}`);
   }
 
+  // archived 저장소의 이벤트는 보강하지 않는다 - GHE API 호출을 줄인다.
+  if (typeof repositoryId === "number") {
+    const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
+    if (repository === undefined || repository.status !== "active") {
+      log({
+        level: "info",
+        message: "보강 대상이 아니다",
+        delivery_id: deliveryId,
+        correlation_id: event.correlation_id,
+        reason: "repository_not_active",
+      });
+      observe("skipped");
+      return { disposition: { kind: "ack" }, reason: "repository_not_active" };
+    }
+  }
   const outcome = extractTarget(row.event_type, row.payload);
-  if (outcome.kind === 'skip') {
+  if (outcome.kind === "skip") {
     // DEV-016: 이 워커의 일이 아니다. 원본은 `raw_event`에 남아 있으므로
     // 소비자가 생기면 그때 진행된다. 여기서 실패로 적으면 실패 대기열이
     // 정상 이벤트로 가득 찬다.
     log({
-      level: 'info',
-      message: '보강 대상이 아니다',
+      level: "info",
+      message: "보강 대상이 아니다",
       delivery_id: deliveryId,
       correlation_id: event.correlation_id,
       reason: outcome.reason,
     });
-    observe('skipped');
-    return { disposition: { kind: 'ack' }, reason: outcome.reason };
+    observe("skipped");
+    return { disposition: { kind: "ack" }, reason: outcome.reason };
   }
-  if (outcome.kind === 'invalid') {
-    return fail('malformed_payload', outcome.reason);
+  if (outcome.kind === "invalid") {
+    return fail("malformed_payload", outcome.reason);
   }
 
   const target = outcome.target;
   if (deps.installationFor(target.owner) === undefined) {
     return fail(
-      'installation_unregistered',
+      "installation_unregistered",
       `설치가 등록되지 않은 조직이다: ${target.owner} (GHE_INSTALLATIONS 확인)`,
     );
   }
@@ -263,7 +281,7 @@ async function enrichTarget(
    */
   let pullRequestFromApi = false;
   try {
-    const fresh = await deps.client.getPullRequest(ref, target.prNumber, { priority: 'realtime' });
+    const fresh = await deps.client.getPullRequest(ref, target.prNumber, { priority: "realtime" });
     // API 응답이 웹훅보다 새롭다. 웹훅은 발생 시점의 스냅숏이고 재전송이면
     // 몇 분 전 것일 수도 있다. 그래서 겹치는 필드는 API 값을 그대로 쓴다.
     // 매핑은 백필과 공유한다 — 두 경로가 각자 옮기면 언젠가 어긋난다 (CR-022).
@@ -272,9 +290,9 @@ async function enrichTarget(
   } catch (error) {
     if (isNotFound(error)) {
       // 삭제된 PR이다. 다시 물어봐도 없다 (비동기 5.2). 재시도 없이 종료한다.
-      return context.fail('pull_request_not_found', `PR을 찾을 수 없다: ${target.prNumber}`);
+      return context.fail("pull_request_not_found", `PR을 찾을 수 없다: ${target.prNumber}`);
     }
-    failures.push(describeFailure('pull_request', error));
+    failures.push(describeFailure("pull_request", error));
   }
 
   // --- 원본 커밋 ---
@@ -283,13 +301,13 @@ async function enrichTarget(
   let commitsFetched = false;
   try {
     const page = await deps.client.listPullRequestCommitsPaged(ref, target.prNumber, {
-      priority: 'realtime',
+      priority: "realtime",
     });
     sourceCommitShas = page.items.map((commit) => commit.sha);
     sourceCommitsTruncated = page.truncated;
     commitsFetched = true;
   } catch (error) {
-    failures.push(describeFailure('commits', error));
+    failures.push(describeFailure("commits", error));
   }
 
   /*
@@ -322,7 +340,7 @@ async function enrichTarget(
   ) {
     try {
       const after = toEnrichedPullRequest(
-        await deps.client.getPullRequest(ref, target.prNumber, { priority: 'realtime' }),
+        await deps.client.getPullRequest(ref, target.prNumber, { priority: "realtime" }),
       );
       sourceCommitsComplete =
         after.head_sha === pullRequest.head_sha && after.base_sha === pullRequest.base_sha;
@@ -339,7 +357,7 @@ async function enrichTarget(
   let filesTruncated = false;
   try {
     const page = await deps.client.listPullRequestFilesPaged(ref, target.prNumber, {
-      priority: 'realtime',
+      priority: "realtime",
     });
     changedFiles = page.items.map((file) => ({
       filename: file.filename,
@@ -349,14 +367,14 @@ async function enrichTarget(
     }));
     filesTruncated = page.truncated;
   } catch (error) {
-    failures.push(describeFailure('files', error));
+    failures.push(describeFailure("files", error));
   }
 
   // --- 리뷰 ---
   let reviews: readonly EnrichedReview[] = [];
   try {
     const list = await deps.client.listPullRequestReviews(ref, target.prNumber, {
-      priority: 'realtime',
+      priority: "realtime",
     });
     reviews = list.map((review) => ({
       id: review.id,
@@ -365,7 +383,7 @@ async function enrichTarget(
       submitted_at: review.submitted_at,
     }));
   } catch (error) {
-    failures.push(describeFailure('reviews', error));
+    failures.push(describeFailure("reviews", error));
   }
 
   // --- 처분 ---
@@ -373,39 +391,41 @@ async function enrichTarget(
   if (retryAt !== undefined) {
     // AC-2. 재시도 예산을 쓰지 않는다 — 대기는 실패가 아니다.
     context.log({
-      level: 'info',
-      message: 'rate limit 회복까지 보강을 미룬다',
+      level: "info",
+      message: "rate limit 회복까지 보강을 미룬다",
       delivery_id: context.deliveryId,
       correlation_id: event.correlation_id,
       repository_id: target.repositoryId,
       pr_number: target.prNumber,
       retry_at: retryAt.toISOString(),
     });
-    context.observe('deferred');
-    return { disposition: deferUntil(retryAt, 'rate_limited') };
+    context.observe("deferred");
+    return { disposition: deferUntil(retryAt, "rate_limited") };
   }
 
   const retryable = failures.some((failure) => failure.retryable);
   if (retryable && context.retriesUsed < MAX_RETRIES) {
     context.log({
-      level: 'warn',
-      message: '보강 실패, 표준 백오프로 재시도한다',
+      level: "warn",
+      message: "보강 실패, 표준 백오프로 재시도한다",
       delivery_id: context.deliveryId,
       correlation_id: event.correlation_id,
       repository_id: target.repositoryId,
       pr_number: target.prNumber,
-      reason: failures.map((failure) => `${failure.error.component}:${failure.error.kind}`).join(','),
+      reason: failures
+        .map((failure) => `${failure.error.component}:${failure.error.kind}`)
+        .join(","),
       retry_count: context.retriesUsed,
     });
-    context.observe('retry');
-    return { disposition: { kind: 'retry', reason: 'enrichment_failed' } };
+    context.observe("retry");
+    return { disposition: { kind: "retry", reason: "enrichment_failed" } };
   }
 
   const enrichmentPending = failures.length > 0;
   const enriched: IngestionEnriched = {
     delivery_id: context.deliveryId,
     repository_id: target.repositoryId,
-    entity_kind: 'pull_request',
+    entity_kind: "pull_request",
     pr_number: target.prNumber,
     pull_request: pullRequest,
     source_commit_shas: sourceCommitShas,
@@ -439,21 +459,23 @@ async function enrichTarget(
 
   if (!enrichmentPending) {
     context.log({
-      level: 'info',
-      message: '보강 완료',
+      level: "info",
+      message: "보강 완료",
       delivery_id: context.deliveryId,
       correlation_id: event.correlation_id,
       repository_id: target.repositoryId,
       pr_number: target.prNumber,
     });
-    context.observe('ok');
-    return { disposition: { kind: 'ack' }, published: enriched };
+    context.observe("ok");
+    return { disposition: { kind: "ack" }, published: enriched };
   }
 
-  const reason = failures.map((failure) => `${failure.error.component}:${failure.error.kind}`).join(',');
-  deps.metrics.enrichPending.inc({ reason: failures[0]?.error.kind ?? 'unknown' });
+  const reason = failures
+    .map((failure) => `${failure.error.component}:${failure.error.kind}`)
+    .join(",");
+  deps.metrics.enrichPending.inc({ reason: failures[0]?.error.kind ?? "unknown" });
   const terminal = await context.fail(
-    'enrichment_incomplete',
+    "enrichment_incomplete",
     `보강 부분 실패로 부분 문서를 진행했다: ${reason}`,
   );
   return { ...terminal, published: enriched };

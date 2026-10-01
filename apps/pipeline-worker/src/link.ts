@@ -40,7 +40,7 @@ import {
   type IngestionProjected,
   type ReferenceTarget,
   type RepoSlug,
-} from '@prs/domain';
+} from "@prs/domain";
 import {
   MAX_RETRIES,
   TOPICS,
@@ -50,9 +50,15 @@ import {
   type HandlerDisposition,
   type SubscribeOptions,
   type Subscription,
-} from '@prs/bus';
-import { commitSnapshotRepo, jobRepo, prSnapshotRepo, repositoryRepo, withReindexWrite } from '@prs/db';
-import type { Pool, RepositoryRow } from '@prs/db';
+} from "@prs/bus";
+import {
+  commitSnapshotRepo,
+  jobRepo,
+  prSnapshotRepo,
+  repositoryRepo,
+  withReindexWrite,
+} from "@prs/db";
+import type { Pool, RepositoryRow } from "@prs/db";
 import {
   deleteStaleReferenceLinks,
   derivedLinkSource,
@@ -68,24 +74,29 @@ import {
   type ReferenceResolution,
   type TargetLookup,
   type WriteTargets,
-} from '@prs/es';
-import type { Client } from '@elastic/elasticsearch';
-import { deriveRelations, handleRelationsReady, planRelationEdges, type RelationOutcome } from './relations.js';
-import type { WorkerMetrics } from './metrics.js';
-import type { LinkRebuildPort, PlannedLinks } from './reindex.js';
+} from "@prs/es";
+import type { Client } from "@elastic/elasticsearch";
+import {
+  deriveRelations,
+  handleRelationsReady,
+  planRelationEdges,
+  type RelationOutcome,
+} from "./relations.js";
+import type { WorkerMetrics } from "./metrics.js";
+import type { LinkRebuildPort, PlannedLinks } from "./reindex.js";
 
-export const LINK_DERIVE_JOB = 'JOB-REL-001' as const;
-export const LINK_RESOLVE_JOB = 'JOB-REL-005' as const;
-export const LINK_REBUILD_JOB = 'JOB-REL-006' as const;
+export const LINK_DERIVE_JOB = "JOB-REL-001" as const;
+export const LINK_RESOLVE_JOB = "JOB-REL-005" as const;
+export const LINK_REBUILD_JOB = "JOB-REL-006" as const;
 
 /** `job.type`. 마이그레이션 001의 `job_type_chk`에 이미 있다 — 새 번호를 만들지 않는다. */
-export const LINK_REBUILD_TYPE = 'link_rebuild' as const;
+export const LINK_REBUILD_TYPE = "link_rebuild" as const;
 
 /** 재파생 한 배치의 크기. 무한정 밀어 넣지 않는다. */
 export const REBUILD_BATCH = 200;
 
 export interface LinkLogFields {
-  readonly level: 'info' | 'warn' | 'error';
+  readonly level: "info" | "warn" | "error";
   readonly message: string;
   readonly [key: string]: unknown;
 }
@@ -147,13 +158,13 @@ function slugOf(repository: RepositoryRow): RepoSlug {
 }
 
 function docIdOf(repositoryId: number, source: LinkSource): string {
-  return source.kind === 'pull_request'
+  return source.kind === "pull_request"
     ? pullRequestDocId(repositoryId, Number(source.id))
     : commitDocId(repositoryId, source.id);
 }
 
-function aliasOf(kind: LinkEndpointKind): 'prs-pull-requests' | 'prs-commits' {
-  return kind === 'pull_request' ? 'prs-pull-requests' : 'prs-commits';
+function aliasOf(kind: LinkEndpointKind): "prs-pull-requests" | "prs-commits" {
+  return kind === "pull_request" ? "prs-pull-requests" : "prs-commits";
 }
 
 /** 파생 입력. 정본에서 읽은 텍스트와 그 정본의 시각. */
@@ -174,7 +185,7 @@ async function readSource(
   repositoryId: number,
   source: LinkSource,
 ): Promise<SourceText | undefined> {
-  if (source.kind === 'pull_request') {
+  if (source.kind === "pull_request") {
     const rows = await prSnapshotRepo.listSnapshotsAfter(
       deps.pool,
       repositoryId,
@@ -184,8 +195,8 @@ async function readSource(
     const row = rows[0];
     if (row === undefined || row.pr_number !== Number(source.id)) return undefined;
     const document = row.document;
-    const title = typeof document['title'] === 'string' ? document['title'] : '';
-    const body = typeof document['body'] === 'string' ? document['body'] : '';
+    const title = typeof document["title"] === "string" ? document["title"] : "";
+    const body = typeof document["body"] === "string" ? document["body"] : "";
     return {
       // 제목과 본문 둘 다 참조를 담을 수 있다. 줄로 나눠 트레일러 판정이 섞이지 않게 한다.
       text: `${title}\n${body}`,
@@ -200,9 +211,9 @@ async function readSource(
 
 /** PR 정본의 시각. 없으면 색인 시각, 그것도 없으면 빈 문자열이 아니라 epoch다. */
 function canonicalTime(document: Record<string, unknown>): string {
-  for (const key of ['updated_at', 'created_at', 'indexed_at']) {
+  for (const key of ["updated_at", "created_at", "indexed_at"]) {
     const value = document[key];
-    if (typeof value === 'string' && value !== '') return value;
+    if (typeof value === "string" && value !== "") return value;
   }
   return new Date(0).toISOString();
 }
@@ -224,7 +235,11 @@ async function targetRepositoryId(
   const cached = cache.get(slug);
   if (cached !== undefined) return cached ?? undefined;
 
-  const row = await repositoryRepo.findRepositoryBySlug(deps.pool, target.repo.owner, target.repo.name);
+  const row = await repositoryRepo.findRepositoryBySlug(
+    deps.pool,
+    target.repo.owner,
+    target.repo.name,
+  );
   const id = row === undefined ? null : Number(row.repository_id);
   cache.set(slug, id);
   return id ?? undefined;
@@ -232,20 +247,24 @@ async function targetRepositoryId(
 
 function toLookup(key: string, repositoryId: number, target: ReferenceTarget): TargetLookup | null {
   switch (target.kind) {
-    case 'pull_request':
-      return { key, kind: 'pull_request', repositoryId, prNumber: target.number };
-    case 'commit':
-      return { key, kind: 'commit', repositoryId, sha: target.sha };
-    case 'commit_prefix':
-      return { key, kind: 'commit_prefix', repositoryId, prefix: target.prefix };
+    case "pull_request":
+      return { key, kind: "pull_request", repositoryId, prNumber: target.number };
+    case "commit":
+      return { key, kind: "commit", repositoryId, sha: target.sha };
+    case "commit_prefix":
+      return { key, kind: "commit_prefix", repositoryId, prefix: target.prefix };
   }
 }
 
 /** 한 source의 참조 간선 계획 — 쓰기 전의 결과다. 파생과 전환 전 검증이 함께 쓴다 (CR-121). */
 export type ReferencePlan =
-  | { readonly kind: 'absent' }
-  | { readonly kind: 'extract_failed'; readonly reason: string }
-  | { readonly kind: 'planned'; readonly docs: readonly ReferenceLinkDoc[]; readonly resolvedCount: number };
+  | { readonly kind: "absent" }
+  | { readonly kind: "extract_failed"; readonly reason: string }
+  | {
+      readonly kind: "planned";
+      readonly docs: readonly ReferenceLinkDoc[];
+      readonly resolvedCount: number;
+    };
 
 /**
  * 정본에서 참조 간선을 **계획한다** — 아무것도 쓰지 않는다 (CR-121).
@@ -262,7 +281,7 @@ export async function planReferenceLinks(
   const docId = docIdOf(repositoryId, source);
 
   const canonical = await readSource(deps, repositoryId, source);
-  if (canonical === undefined) return { kind: 'absent' };
+  if (canonical === undefined) return { kind: "absent" };
 
   let extracted: readonly ExtractedReference[];
   try {
@@ -271,7 +290,7 @@ export async function planReferenceLinks(
       gheHost: deps.gheHost ?? null,
     });
   } catch (error) {
-    return { kind: 'extract_failed', reason: String(error).slice(0, 200) };
+    return { kind: "extract_failed", reason: String(error).slice(0, 200) };
   }
 
   // ---- 대상 해석. 등록되지 않은 저장소는 미해결이 정답이다.
@@ -303,7 +322,7 @@ export async function planReferenceLinks(
     created_at: canonical.canonicalAt,
     resolution: resolutions.get(reference.reference_key) ?? null,
   }));
-  return { kind: 'planned', docs, resolvedCount: resolutions.size };
+  return { kind: "planned", docs, resolvedCount: resolutions.size };
 }
 
 /**
@@ -322,7 +341,7 @@ export async function deriveReferenceLinks(
   const docId = docIdOf(repositoryId, source);
 
   const plan = await planReferenceLinks(deps, repository, source);
-  if (plan.kind === 'absent') {
+  if (plan.kind === "absent") {
     /*
      * 정본이 없으면 **아무것도 확정하지 않는다.** 간선을 지우지도, 완결을 찍지도
      * 않는다 — 여기서 "참조 0건"으로 확정하면 정본이 늦게 도착한 문서의 간선이
@@ -330,19 +349,21 @@ export async function deriveReferenceLinks(
      */
     return { ...EMPTY, absent: true };
   }
-  if (plan.kind === 'extract_failed') {
+  if (plan.kind === "extract_failed") {
     /*
      * 추출 실패는 색인을 막지 않는다 (FR-REL-003 예외 처리). **기존 간선도 지우지
      * 않는다** — 부분 결과를 완전한 결과로 확정하면 멀쩡한 간선이 사라진다.
      */
     log({
-      level: 'warn',
-      message: '참조 추출 실패 — 기존 간선을 보존한다',
+      level: "warn",
+      message: "참조 추출 실패 — 기존 간선을 보존한다",
       repository_id: repositoryId,
       doc_id: docId,
       reason: plan.reason,
     });
-    await withReindexWrite(deps.pool, (targets) => markPending(deps, targets, source, repositoryId, docId));
+    await withReindexWrite(deps.pool, (targets) =>
+      markPending(deps, targets, source, repositoryId, docId),
+    );
     return EMPTY;
   }
 
@@ -381,17 +402,19 @@ async function writeDerivedReferenceSet(
 ): Promise<DeriveOutcome> {
   const { docs, source, repositoryId, docId, log } = input;
 
-  const write = await writeReferenceLinks(deps.es, docs, targets, { refresh: deps.refresh === true });
+  const write = await writeReferenceLinks(deps.es, docs, targets, {
+    refresh: deps.refresh === true,
+  });
   const complete = write.failures.length === 0;
 
   if (!complete) {
     log({
-      level: 'warn',
-      message: '간선 쓰기 일부 실패 — stale 제거를 하지 않는다',
+      level: "warn",
+      message: "간선 쓰기 일부 실패 — stale 제거를 하지 않는다",
       repository_id: repositoryId,
       doc_id: docId,
       failures: write.failures.length,
-      reason: write.failures[0]?.reason ?? '',
+      reason: write.failures[0]?.reason ?? "",
     });
     await markPending(deps, targets, source, repositoryId, docId);
     return { references: docs.length, resolved: input.resolvedCount, removed: 0, complete: false };
@@ -491,11 +514,11 @@ export async function resolveReferencesTo(
   const docId = docIdOf(repositoryId, target);
 
   const sameRepoKeys =
-    target.kind === 'pull_request'
+    target.kind === "pull_request"
       ? pullRequestReferenceKeys(Number(target.id), null)
       : commitReferenceKeys(target.id, null);
   const crossRepoKeys =
-    target.kind === 'pull_request'
+    target.kind === "pull_request"
       ? pullRequestReferenceKeys(Number(target.id), slug)
       : commitReferenceKeys(target.id, slug);
 
@@ -507,7 +530,7 @@ export async function resolveReferencesTo(
     targetRepositoryId: repositoryId,
     sameRepoKeys,
     crossRepoKeys,
-    include: target.kind === 'commit' ? 'any' : 'unresolved',
+    include: target.kind === "commit" ? "any" : "unresolved",
   });
   if (candidates.length === 0) return 0;
 
@@ -515,7 +538,7 @@ export async function resolveReferencesTo(
   const prefixKeys = new Set<string>();
   for (const link of candidates) {
     const parsed = parseReferenceKey(link.reference_key);
-    if (parsed?.kind === 'commit_prefix') prefixKeys.add(link.reference_key);
+    if (parsed?.kind === "commit_prefix") prefixKeys.add(link.reference_key);
   }
 
   let prefixResolutions: ReadonlyMap<string, ReferenceResolution> = new Map();
@@ -523,8 +546,8 @@ export async function resolveReferencesTo(
     const lookups: TargetLookup[] = [];
     for (const key of prefixKeys) {
       const parsed = parseReferenceKey(key);
-      if (parsed?.kind !== 'commit_prefix') continue;
-      lookups.push({ key, kind: 'commit_prefix', repositoryId, prefix: parsed.prefix });
+      if (parsed?.kind !== "commit_prefix") continue;
+      lookups.push({ key, kind: "commit_prefix", repositoryId, prefix: parsed.prefix });
     }
     prefixResolutions = await findReferenceTargets(deps.es, lookups);
   }
@@ -538,7 +561,9 @@ export async function resolveReferencesTo(
    * 정확한 키를 붙일 후보가 있을 때만 대상 문서를 한 번 확인한다. 실시간 존재 확인이라 방금 투영된
    * 대상도 보이고, 없으면 계획(`findReferenceTargets`)처럼 미해결로 둔다.
    */
-  const needsDirect = candidates.some((link) => !prefixKeys.has(link.reference_key) && !link.resolved);
+  const needsDirect = candidates.some(
+    (link) => !prefixKeys.has(link.reference_key) && !link.resolved,
+  );
   const targetIndexed = needsDirect
     ? await isReferenceTargetIndexed(deps.es, { kind: target.kind, docId, repositoryId })
     : false;
@@ -556,7 +581,9 @@ export async function resolveReferencesTo(
      * 다시 파생하고 간선은 빠진 채 남는다. 어긋난 문서는 색인이 손상된 것이라 던진다.
      */
     if (referenceLinkId(link.from_type, link.from_id, link.reference_key) !== link.link_id) {
-      throw new Error(`reference_link_owner_mismatch: ${link.link_id} (${link.from_type} ${link.from_id})`);
+      throw new Error(
+        `reference_link_owner_mismatch: ${link.link_id} (${link.from_type} ${link.from_id})`,
+      );
     }
     const owner = { sourceKind: link.from_type, docId: link.from_id };
     if (prefixKeys.has(link.reference_key)) {
@@ -567,14 +594,24 @@ export async function resolveReferencesTo(
       const next = prefixResolutions.get(link.reference_key) ?? null;
       // 이미 미해결인데 여전히 해결되지 않으면 쓸 것이 없다.
       if (next === null && !link.resolved) continue;
-      updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), owner, resolution: next });
+      updates.push({
+        link_id: link.link_id,
+        repository_id: Number(link.repository_id),
+        owner,
+        resolution: next,
+      });
       continue;
     }
     // 정확한 키. 이미 해결됐으면 다시 쓸 이유가 없다 — 모호해질 수 없다.
     if (link.resolved) continue;
     // 대상 문서가 서비스 색인에 없으면 붙이지 않는다 — 파생·검증의 계획과 같은 판정이다.
     if (!targetIndexed) continue;
-    updates.push({ link_id: link.link_id, repository_id: Number(link.repository_id), owner, resolution: direct });
+    updates.push({
+      link_id: link.link_id,
+      repository_id: Number(link.repository_id),
+      owner,
+      resolution: direct,
+    });
   }
 
   const result = await withReindexWrite(deps.pool, (targets) =>
@@ -592,7 +629,7 @@ export async function resolveReferencesTo(
    */
   if (result.failures.length > 0) {
     throw new Error(
-      `참조 해결 부분 실패 ${String(result.failures.length)}건: ${result.failures[0]?.reason ?? ''}`,
+      `참조 해결 부분 실패 ${String(result.failures.length)}건: ${result.failures[0]?.reason ?? ""}`,
     );
   }
   return result.written;
@@ -603,12 +640,12 @@ export async function resolveReferencesTo(
 /* ------------------------------------------------------------------------- */
 
 function sourceFromEntity(entityKind: string, entityId: string): LinkSource | null {
-  const separator = entityId.indexOf(':');
+  const separator = entityId.indexOf(":");
   if (separator < 0) return null;
   const tail = entityId.slice(separator + 1);
-  if (tail === '') return null;
-  if (entityKind === 'pull_request') return { kind: 'pull_request', id: tail };
-  if (entityKind === 'commit') return { kind: 'commit', id: tail.toLowerCase() };
+  if (tail === "") return null;
+  if (entityKind === "pull_request") return { kind: "pull_request", id: tail };
+  if (entityKind === "commit") return { kind: "commit", id: tail.toLowerCase() };
   return null;
 }
 
@@ -657,33 +694,37 @@ export async function handleLinkEvent(
 
   if (name === EVENT_NAMES.ingestionProjected) {
     const event = delivered.payload as unknown as IngestionProjected | null;
-    if (event === null) return { kind: 'ack' };
+    if (event === null) return { kind: "ack" };
     repositoryId = Number(event.repository_id);
     source = sourceFromEntity(event.entity_kind, event.entity_id);
   } else if (name === EVENT_NAMES.commitMetadataReady) {
     const event = delivered.payload as unknown as CommitMetadataReady | null;
-    if (event === null) return { kind: 'ack' };
+    if (event === null) return { kind: "ack" };
     repositoryId = Number(event.repository_id);
-    source = { kind: 'commit', id: event.commit_sha.toLowerCase() };
+    source = { kind: "commit", id: event.commit_sha.toLowerCase() };
   } else {
     /*
      * 시퀀스 이벤트도 이 토픽으로 온다. 관계 파생의 방아쇠가 아니다 —
      * 채번은 문서 본문을 바꾸지 않는다.
      */
-    return { kind: 'ack' };
+    return { kind: "ack" };
   }
 
-  if (source === null || repositoryId === null || !Number.isFinite(repositoryId)) return { kind: 'ack' };
+  if (source === null || repositoryId === null || !Number.isFinite(repositoryId))
+    return { kind: "ack" };
 
   const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
   // 등록되지 않은 저장소의 간선은 애초에 만들지 않는다 (FR-ING-009 AC-4).
-  if (repository === undefined) return { kind: 'ack' };
+  if (repository === undefined) return { kind: "ack" };
+
+  // archived 저장소는 관계 파생하지 않는다 - GHE API 호출을 줄인다.
+  if (repository.status !== "active") return { kind: "ack" };
 
   try {
     const outcome = await handleSourceReady(deps, repository, source);
     log({
-      level: 'info',
-      message: '참조 간선 파생',
+      level: "info",
+      message: "참조 간선 파생",
       job: LINK_DERIVE_JOB,
       repository_id: repositoryId,
       correlation_id: delivered.correlation_id,
@@ -699,7 +740,7 @@ export async function handleLinkEvent(
       relations_complete: outcome.relations.complete,
       reevaluated: outcome.reevaluated,
     });
-    return { kind: 'ack' };
+    return { kind: "ack" };
   } catch (error) {
     /*
      * **예산은 핸들러가 집행한다** (CR-039, DEV-228).
@@ -711,8 +752,10 @@ export async function handleLinkEvent(
      */
     const exhausted = delivered.delivery_count >= MAX_RETRIES;
     log({
-      level: exhausted ? 'error' : 'warn',
-      message: exhausted ? '참조 간선 파생 실패 — 재시도 예산 소진' : '참조 간선 파생 실패 — 재시도',
+      level: exhausted ? "error" : "warn",
+      message: exhausted
+        ? "참조 간선 파생 실패 — 재시도 예산 소진"
+        : "참조 간선 파생 실패 — 재시도",
       job: LINK_DERIVE_JOB,
       repository_id: repositoryId,
       correlation_id: delivered.correlation_id,
@@ -720,8 +763,8 @@ export async function handleLinkEvent(
       reason: String(error).slice(0, 200),
     });
     return exhausted
-      ? { kind: 'dead_letter', reason: 'link_derivation_failed' }
-      : { kind: 'retry', reason: 'link_derivation_failed' };
+      ? { kind: "dead_letter", reason: "link_derivation_failed" }
+      : { kind: "retry", reason: "link_derivation_failed" };
   }
 }
 
@@ -750,21 +793,21 @@ export async function startLinkWorker(
 
 /** 재개 커서. 잡 행에 그대로 남는다. */
 export interface RebuildCursor {
-  readonly phase: 'pull_request' | 'commit';
+  readonly phase: "pull_request" | "commit";
   /** 마지막으로 처리한 PR 번호. */
   readonly pr: number;
   /** 마지막으로 처리한 커밋 SHA. */
   readonly sha: string;
 }
 
-const START: RebuildCursor = { phase: 'pull_request', pr: 0, sha: '' };
+const START: RebuildCursor = { phase: "pull_request", pr: 0, sha: "" };
 
 function parseCursor(raw: Record<string, unknown> | null): RebuildCursor {
   if (raw === null) return START;
   return {
-    phase: raw['phase'] === 'commit' ? 'commit' : 'pull_request',
-    pr: typeof raw['pr'] === 'number' ? raw['pr'] : 0,
-    sha: typeof raw['sha'] === 'string' ? raw['sha'] : '',
+    phase: raw["phase"] === "commit" ? "commit" : "pull_request",
+    pr: typeof raw["pr"] === "number" ? raw["pr"] : 0,
+    sha: typeof raw["sha"] === "string" ? raw["sha"] : "",
   };
 }
 
@@ -811,14 +854,19 @@ export async function runReferenceRebuild(
     if (!outcome.derived.complete && outcome.derived.absent !== true) incomplete.push(source);
   };
 
-  if (current.phase === 'pull_request') {
-    const rows = await prSnapshotRepo.listSnapshotsAfter(deps.pool, repositoryId, current.pr, batch);
+  if (current.phase === "pull_request") {
+    const rows = await prSnapshotRepo.listSnapshotsAfter(
+      deps.pool,
+      repositoryId,
+      current.pr,
+      batch,
+    );
     for (const row of rows) {
-      await track({ kind: 'pull_request', id: String(row.pr_number) });
+      await track({ kind: "pull_request", id: String(row.pr_number) });
       processed += 1;
       current = { ...current, pr: row.pr_number };
     }
-    if (rows.length < batch) current = { phase: 'commit', pr: current.pr, sha: '' };
+    if (rows.length < batch) current = { phase: "commit", pr: current.pr, sha: "" };
     return { processed, cursor: current, done: false, incomplete };
   }
 
@@ -829,7 +877,7 @@ export async function runReferenceRebuild(
     batch,
   );
   for (const row of rows) {
-    await track({ kind: 'commit', id: row.commit_sha });
+    await track({ kind: "commit", id: row.commit_sha });
     processed += 1;
     current = { ...current, sha: row.commit_sha };
   }
@@ -864,19 +912,23 @@ export function createLinkRebuildPort(deps: LinkDeps): LinkRebuildPort {
     },
     async rederiveSource(repository, source) {
       const derived = await deriveReferenceLinks(deps, repository, source);
-      if (derived.absent === true) return 'absent';
-      const relations = await withReindexWrite(deps.pool, (targets) => deriveRelations(deps, repository, source, targets));
-      return derived.complete && relations.complete ? 'complete' : 'incomplete';
+      if (derived.absent === true) return "absent";
+      const relations = await withReindexWrite(deps.pool, (targets) =>
+        deriveRelations(deps, repository, source, targets),
+      );
+      return derived.complete && relations.complete ? "complete" : "incomplete";
     },
     async planSource(repository, source): Promise<PlannedLinks> {
       const references = await planReferenceLinks(deps, repository, source);
-      if (references.kind === 'absent') return { kind: 'absent' };
-      if (references.kind === 'extract_failed') return { kind: 'unplannable', reason: references.reason };
+      if (references.kind === "absent") return { kind: "absent" };
+      if (references.kind === "extract_failed")
+        return { kind: "unplannable", reason: references.reason };
       const relations = await planRelationEdges(deps, repository, source);
       // 참조 계획이 정본을 읽은 뒤 사라졌다 — 이 순간의 기대를 말할 수 없다.
-      if (relations === undefined) return { kind: 'unplannable', reason: 'source_vanished_during_plan' };
+      if (relations === undefined)
+        return { kind: "unplannable", reason: "source_vanished_during_plan" };
       return {
-        kind: 'planned',
+        kind: "planned",
         edges: [...references.docs.map(referenceLinkSource), ...relations.map(derivedLinkSource)],
       };
     },
@@ -920,7 +972,12 @@ export function startReferenceRebuildRunner(deps: LinkDeps): RebuildRunner {
           await runJob(deps, job.job_id, log);
         }
       } catch (error) {
-        log({ level: 'error', message: '재파생 러너 오류', job: LINK_REBUILD_JOB, reason: String(error).slice(0, 200) });
+        log({
+          level: "error",
+          message: "재파생 러너 오류",
+          job: LINK_REBUILD_JOB,
+          reason: String(error).slice(0, 200),
+        });
       }
       if (!worked && !stopped) await sleep(REBUILD_POLL_MS);
     }
@@ -935,7 +992,11 @@ export function startReferenceRebuildRunner(deps: LinkDeps): RebuildRunner {
   };
 }
 
-async function runJob(deps: LinkDeps, jobId: number, log: (fields: LinkLogFields) => void): Promise<void> {
+async function runJob(
+  deps: LinkDeps,
+  jobId: number,
+  log: (fields: LinkLogFields) => void,
+): Promise<void> {
   const row = await jobRepo.findJobById(deps.pool, jobId);
   if (row === undefined) return;
 
@@ -945,7 +1006,7 @@ async function runJob(deps: LinkDeps, jobId: number, log: (fields: LinkLogFields
    * 여기만 `repository_id`를 쓰면 API-ADM-002가 만든 행을 러너가 해석하지
    * 못한다 — 운영자가 만들 수 있는 유일한 경로가 그 형식이다.
    */
-  const slash = row.target.indexOf('/');
+  const slash = row.target.indexOf("/");
   const repository =
     slash < 0
       ? undefined
@@ -955,7 +1016,7 @@ async function runJob(deps: LinkDeps, jobId: number, log: (fields: LinkLogFields
           row.target.slice(slash + 1),
         );
   if (repository === undefined) {
-    await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', 'repository_not_found');
+    await jobRepo.finishJobIfRunning(deps.pool, jobId, "failed", "repository_not_found");
     return;
   }
   const repositoryId = Number(repository.repository_id);
@@ -966,7 +1027,7 @@ async function runJob(deps: LinkDeps, jobId: number, log: (fields: LinkLogFields
     for (;;) {
       // 운영자가 멈췄으면 커서를 남긴 채 물러난다 (CR-037, DEV-196의 규율).
       const state = await jobRepo.findJobState(deps.pool, jobId);
-      if (state !== 'running') return;
+      if (state !== "running") return;
 
       const result = await runReferenceRebuild(deps, repository, cursor);
       cursor = result.cursor;
@@ -974,24 +1035,24 @@ async function runJob(deps: LinkDeps, jobId: number, log: (fields: LinkLogFields
       await jobRepo.updateJobProgress(
         deps.pool,
         jobId,
-        { done: total, total: null, unit: 'documents' },
+        { done: total, total: null, unit: "documents" },
         { ...cursor },
       );
       if (result.done) break;
     }
-    await jobRepo.finishJobIfRunning(deps.pool, jobId, 'completed', null);
+    await jobRepo.finishJobIfRunning(deps.pool, jobId, "completed", null);
     log({
-      level: 'info',
-      message: '참조 간선 전량 재파생 완료',
+      level: "info",
+      message: "참조 간선 전량 재파생 완료",
       job: LINK_REBUILD_JOB,
       repository_id: repositoryId,
       processed: total,
     });
   } catch (error) {
-    await jobRepo.finishJobIfRunning(deps.pool, jobId, 'failed', String(error).slice(0, 200));
+    await jobRepo.finishJobIfRunning(deps.pool, jobId, "failed", String(error).slice(0, 200));
     log({
-      level: 'error',
-      message: '참조 간선 전량 재파생 실패 — 커서가 남는다',
+      level: "error",
+      message: "참조 간선 전량 재파생 실패 — 커서가 남는다",
       job: LINK_REBUILD_JOB,
       repository_id: repositoryId,
       processed: total,

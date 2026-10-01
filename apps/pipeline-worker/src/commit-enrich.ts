@@ -43,8 +43,8 @@ import {
   type IngestionProjected,
   type SequenceAssigned,
   type SequenceReassigned,
-} from '@prs/domain';
-import { registryOwnedFields } from './documents.js';
+} from "@prs/domain";
+import { registryOwnedFields } from "./documents.js";
 import {
   TOPICS,
   consumerGroup,
@@ -53,19 +53,26 @@ import {
   type HandlerDisposition,
   type SubscribeOptions,
   type Subscription,
-} from '@prs/bus';
-import { commitSnapshotRepo, mergeSequenceRepo, repositoryRepo, sequenceSpaceRepo, sequenceWorkRepo, withReindexWrite } from '@prs/db';
-import type { Pool, RepositoryRow } from '@prs/db';
-import { upsertCommitMetadata, type CommitMetadataFields } from '@prs/es';
-import { docWorkRequest, projectSingleCommit } from './sequence-projection.js';
-import type { Client } from '@elastic/elasticsearch';
-import type { CommitGraph, RepoRef } from '@prs/github';
-import type { WorkerMetrics } from './metrics.js';
+} from "@prs/bus";
+import {
+  commitSnapshotRepo,
+  mergeSequenceRepo,
+  repositoryRepo,
+  sequenceSpaceRepo,
+  sequenceWorkRepo,
+  withReindexWrite,
+} from "@prs/db";
+import type { Pool, RepositoryRow } from "@prs/db";
+import { upsertCommitMetadata, type CommitMetadataFields } from "@prs/es";
+import { docWorkRequest, projectSingleCommit } from "./sequence-projection.js";
+import type { Client } from "@elastic/elasticsearch";
+import type { CommitGraph, RepoRef } from "@prs/github";
+import type { WorkerMetrics } from "./metrics.js";
 
 /** 잡 카탈로그 이름. */
-export const COMMIT_ENRICH_JOB = 'JOB-MIR-002' as const;
+export const COMMIT_ENRICH_JOB = "JOB-MIR-002" as const;
 /** `prs:projected`의 두 번째 논리 소비자 (CR-038, DEV-205). */
-export const COMMIT_ENRICH_CONSUMER = 'commit-enrich' as const;
+export const COMMIT_ENRICH_CONSUMER = "commit-enrich" as const;
 
 /** 스윕 주기: 일 1회 (비동기 문서 9장, 05:00 KST). */
 export const COMMIT_ENRICH_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -75,7 +82,7 @@ export const COMMIT_ENRICH_SWEEP_BATCH = 500;
 export const COMMIT_ENRICH_EVENT_BATCH = 500;
 
 export interface CommitEnrichLogFields {
-  readonly level: 'info' | 'warn' | 'error';
+  readonly level: "info" | "warn" | "error";
   readonly message: string;
   readonly repository_id?: number;
   readonly commit_sha?: string;
@@ -224,7 +231,7 @@ export async function enrichCommit(
   deps: CommitEnrichDeps,
   repository: RepositoryRow,
   target: EnrichTarget,
-  correlationId = '',
+  correlationId = "",
 ): Promise<boolean> {
   const log = deps.log ?? ((): void => undefined);
   const graph = deps.graphFor(repository);
@@ -233,7 +240,7 @@ export async function enrichCommit(
 
   const meta = await graph.readCommit(ref, sha);
   if (meta === null) {
-    deps.metrics.commitEnrichTotal.inc({ source: graph.kind, result: 'not_found' });
+    deps.metrics.commitEnrichTotal.inc({ source: graph.kind, result: "not_found" });
     return false;
   }
 
@@ -259,7 +266,7 @@ export async function enrichCommit(
     changedPathsTruncated: changed.truncated,
     patchId: patch.patchId,
     patchIdUnavailable: patch.patchId === null ? patch.unavailable : null,
-    metadataSource: graph.kind === 'mirror' ? 'mirror' : 'api',
+    metadataSource: graph.kind === "mirror" ? "mirror" : "api",
   });
 
   /*
@@ -270,8 +277,8 @@ export async function enrichCommit(
    */
   const role = target.firstParent
     ? target.pullRequestNumber === null
-      ? 'direct_push'
-      : 'merge_commit'
+      ? "direct_push"
+      : "merge_commit"
     : undefined;
 
   const fact: CommitFactSource = {
@@ -348,7 +355,7 @@ export async function enrichCommit(
     repository_id: repository.repository_id,
     commit_sha: sha,
     entity_id: commitDocId(repository.repository_id, sha),
-    metadata_source: graph.kind === 'mirror' ? 'mirror' : 'api',
+    metadata_source: graph.kind === "mirror" ? "mirror" : "api",
     correlation_id: correlationId,
   };
   await deps.bus.publish(TOPICS.projected, ingestPartitionKey(repository.repository_id, sha), {
@@ -387,12 +394,12 @@ export async function enrichCommit(
    */
   deps.metrics.commitEnrichTotal.inc({
     source: graph.kind,
-    result: result.result === 'already_equal' ? 'noop' : result.result,
+    result: result.result === "already_equal" ? "noop" : result.result,
   });
-  if (result.result === 'created') {
+  if (result.result === "created") {
     log({
-      level: 'info',
-      message: '직접 푸시 커밋 문서를 만들었다',
+      level: "info",
+      message: "직접 푸시 커밋 문서를 만들었다",
       repository_id: repository.repository_id,
       commit_sha: sha,
     });
@@ -404,12 +411,25 @@ export async function enrichCommit(
  * 방금 만든(또는 갱신한) first-parent 커밋 문서에 서수를 비춘다. 실패는 던지지 않는다 —
  * 보강의 성공을 되돌리지 않고 durable 문서 단위 work가 잇는다 (CR-113).
  */
-async function projectAfterCreate(deps: CommitEnrichDeps, repository: RepositoryRow, baseBranch: string, sha: string): Promise<void> {
+async function projectAfterCreate(
+  deps: CommitEnrichDeps,
+  repository: RepositoryRow,
+  baseBranch: string,
+  sha: string,
+): Promise<void> {
   const log = deps.log ?? ((): void => undefined);
   try {
-    const projection = { pool: deps.pool, es: deps.es, ...(deps.now === undefined ? {} : { now: deps.now }) };
+    const projection = {
+      pool: deps.pool,
+      es: deps.es,
+      ...(deps.now === undefined ? {} : { now: deps.now }),
+    };
     const outcome = await projectSingleCommit(projection, repository, baseBranch, sha);
-    const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, baseBranch);
+    const space = await sequenceSpaceRepo.findSequenceSpace(
+      deps.pool,
+      repository.repository_id,
+      baseBranch,
+    );
     if (space === undefined) return;
     /*
      * 이 SHA가 현재 에폭에서 번호를 받은 머지 커밋이면 M 값도 비춰야 한다 (CR-115 / FR-SEQ-012 AC-7).
@@ -417,36 +437,56 @@ async function projectAfterCreate(deps: CommitEnrichDeps, repository: Repository
      * 이미 `done`이었던 work는 generation이 올라 `ready`로 돌아온다. M 기능이 꺼진 배포에서는
      * 러너가 그 행을 `parked`로 두며 켜는 순간 이어 간다.
      */
-    const numbered = await mergeSequenceRepo.findNumberedRowBySha(deps.pool, repository.repository_id, baseBranch, space.seq_epoch, sha);
+    const numbered = await mergeSequenceRepo.findNumberedRowBySha(
+      deps.pool,
+      repository.repository_id,
+      baseBranch,
+      space.seq_epoch,
+      sha,
+    );
     if (numbered !== undefined && numbered.pull_request_number !== null) {
       await sequenceWorkRepo.requestWorkBatch(deps.pool, [
         {
-          kind: 'materialize',
+          kind: "materialize",
           repositoryId: repository.repository_id,
           baseBranch,
           seqEpoch: space.seq_epoch,
           keyExtra: [numbered.pull_request_number],
-          payload: { pr_number: numbered.pull_request_number, trigger_kind: 'commit_enrich' },
+          payload: { pr_number: numbered.pull_request_number, trigger_kind: "commit_enrich" },
         },
       ]);
     }
-    if (outcome.kind !== 'pending') return;
+    if (outcome.kind !== "pending") return;
     await sequenceWorkRepo.requestWorkBatch(deps.pool, [
-      docWorkRequest({ repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch }, 'commit', sha, 'commit_enrich'),
+      docWorkRequest(
+        { repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch },
+        "commit",
+        sha,
+        "commit_enrich",
+      ),
     ]);
   } catch (error) {
     log({
-      level: 'warn',
-      message: '커밋 문서의 서수 투영에 실패했다 — durable 투영 work가 다시 본다',
+      level: "warn",
+      message: "커밋 문서의 서수 투영에 실패했다 — durable 투영 work가 다시 본다",
       repository_id: repository.repository_id,
       commit_sha: sha,
       reason: String(error instanceof Error ? error.message : error).slice(0, 200),
     });
     try {
-      const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repository.repository_id, baseBranch);
+      const space = await sequenceSpaceRepo.findSequenceSpace(
+        deps.pool,
+        repository.repository_id,
+        baseBranch,
+      );
       if (space !== undefined) {
         await sequenceWorkRepo.requestWorkBatch(deps.pool, [
-          docWorkRequest({ repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch }, 'commit', sha, 'commit_enrich_failed'),
+          docWorkRequest(
+            { repositoryId: repository.repository_id, baseBranch, seqEpoch: space.seq_epoch },
+            "commit",
+            sha,
+            "commit_enrich_failed",
+          ),
         ]);
       }
     } catch {
@@ -460,7 +500,7 @@ export async function enrichCommits(
   deps: CommitEnrichDeps,
   repository: RepositoryRow,
   targets: readonly EnrichTarget[],
-  correlationId = '',
+  correlationId = "",
 ): Promise<EnrichOutcome> {
   const log = deps.log ?? ((): void => undefined);
   let enriched = 0;
@@ -476,10 +516,10 @@ export async function enrichCommits(
        * 커밋이 그 구간을 영원히 막는다. 스윕이 남은 것을 다시 본다.
        */
       skipped += 1;
-      deps.metrics.commitEnrichTotal.inc({ source: 'unknown', result: 'failed' });
+      deps.metrics.commitEnrichTotal.inc({ source: "unknown", result: "failed" });
       log({
-        level: 'warn',
-        message: '커밋 보강 실패 — 스윕이 다시 본다',
+        level: "warn",
+        message: "커밋 보강 실패 — 스윕이 다시 본다",
         repository_id: repository.repository_id,
         commit_sha: target.commitSha,
         reason: String(error).slice(0, 200),
@@ -522,8 +562,9 @@ export async function handleProjectedEvent(
   const log = deps.log ?? ((): void => undefined);
   const name = delivered.event_name;
   const payload = delivered.payload as Record<string, unknown>;
-  const repositoryId = typeof payload['repository_id'] === 'number' ? payload['repository_id'] : null;
-  if (repositoryId === null) return { kind: 'ack' };
+  const repositoryId =
+    typeof payload["repository_id"] === "number" ? payload["repository_id"] : null;
+  if (repositoryId === null) return { kind: "ack" };
 
   /*
    * **자기 이벤트다. 되받아 처리하지 않는다** (CR-039, DEV-216).
@@ -534,13 +575,16 @@ export async function handleProjectedEvent(
    *
    * 저장소 조회보다 **앞**에 둔다 — 자기 이벤트에 DB 왕복을 쓸 이유가 없다.
    */
-  if (name === EVENT_NAMES.commitMetadataReady) return { kind: 'ack' };
+  if (name === EVENT_NAMES.commitMetadataReady) return { kind: "ack" };
 
   const repository = await repositoryRepo.findRepositoryById(deps.pool, repositoryId);
   if (repository === undefined) {
     // 등록되지 않은 저장소의 문서는 애초에 만들지 않는다 (FR-ING-009 AC-4).
-    return { kind: 'ack' };
+    return { kind: "ack" };
   }
+
+  // archived 저장소는 커밋 메타데이터를 보강하지 않는다 - GHE API 호출을 줄인다.
+  if (repository.status !== "active") return { kind: "ack" };
 
   let targets: readonly EnrichTarget[] = [];
 
@@ -560,7 +604,11 @@ export async function handleProjectedEvent(
      * 재채번은 `diverged_at_seq`부터 값이 달라진다. 그 앞은 복사된 구간이라 이미
      * 보강돼 있다 — 전 구간을 다시 도는 것은 낭비이고 GHE 한도를 태운다.
      */
-    const space = await sequenceSpaceRepo.findSequenceSpace(deps.pool, repositoryId, event.base_branch);
+    const space = await sequenceSpaceRepo.findSequenceSpace(
+      deps.pool,
+      repositoryId,
+      event.base_branch,
+    );
     targets = await targetsForRange(
       deps,
       repositoryId,
@@ -571,27 +619,27 @@ export async function handleProjectedEvent(
     );
   } else if (name === EVENT_NAMES.ingestionProjected) {
     const event = payload as unknown as IngestionProjected;
-    if (event.entity_kind !== 'commit') return { kind: 'ack' };
+    if (event.entity_kind !== "commit") return { kind: "ack" };
     // 문서 ID는 `repositoryId:sha`다. 체인 소속을 모르므로 역할은 건드리지 않는다.
-    const sha = event.entity_id.slice(event.entity_id.indexOf(':') + 1);
-    if (sha === '') return { kind: 'ack' };
+    const sha = event.entity_id.slice(event.entity_id.indexOf(":") + 1);
+    if (sha === "") return { kind: "ack" };
     targets = [{ commitSha: sha, firstParent: false, pullRequestNumber: null }];
   } else {
-    return { kind: 'ack' };
+    return { kind: "ack" };
   }
 
-  if (targets.length === 0) return { kind: 'ack' };
+  if (targets.length === 0) return { kind: "ack" };
 
   const outcome = await enrichCommits(deps, repository, targets, delivered.correlation_id);
   log({
-    level: 'info',
-    message: '커밋 메타데이터 보강',
+    level: "info",
+    message: "커밋 메타데이터 보강",
     repository_id: repositoryId,
     correlation_id: delivered.correlation_id,
     enriched: outcome.enriched,
     skipped: outcome.skipped,
   });
-  return { kind: 'ack' };
+  return { kind: "ack" };
 }
 
 /**
@@ -656,7 +704,7 @@ export async function runCommitEnrichSweep(
      * (재채번으로 밀려났거나 원본 커밋). 그때는 역할을 판정하지 않는다 —
      * first-parent라는 근거가 없기 때문이다 (DEV-207).
      */
-    const onChain = row.base_branch !== '';
+    const onChain = row.base_branch !== "";
     list.push({
       commitSha: row.commit_sha,
       firstParent: onChain,
@@ -677,7 +725,7 @@ export async function runCommitEnrichSweep(
   }
 
   if (enriched > 0 || skipped > 0) {
-    log({ level: 'info', message: '커밋 보강 스윕', enriched, skipped });
+    log({ level: "info", message: "커밋 보강 스윕", enriched, skipped });
   }
   return { enriched, skipped };
 }
@@ -711,7 +759,11 @@ export function startCommitEnrichSweeper(
       try {
         await runCommitEnrichSweep(deps);
       } catch (error) {
-        log({ level: 'error', message: '커밋 보강 스윕 실패', reason: String(error).slice(0, 200) });
+        log({
+          level: "error",
+          message: "커밋 보강 스윕 실패",
+          reason: String(error).slice(0, 200),
+        });
       }
       if (stopped) break;
       await sleep(interval);
