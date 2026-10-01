@@ -765,6 +765,7 @@ done
 | 업그레이드 직후 스택 해제 표시의 자동 반영 (`CR-126`) — 가져오기 전의 상위 PR 병합·종료·head 변경과 하위 PR retarget, 이미 해제된 이력의 보존, 재색인 보호 유지 | `VERIFIED (external, isolated)` (2026-09-27) — 격리 compose에서 실제 `0.1.0-pilot.18`이 만든 스택으로 수정 전 판(`0.1.0-pilot.19`)과 수정 뒤 판을 같은 스냅숏에서 비교했다(원장 6.117장). 사내 실데이터는 `NOT RUN — internal environment required` |
 | 한국 시간 표시와 KST 달력 날짜 검색 (`CR-127`) — 모든 화면의 시각 KST·원본 UTC 툴팁, 새로 고른 날짜 필터의 한국 날짜 하루(`@Asia/Seoul`), 옛 URL·저장된 검색의 UTC 조건 보존, 통계 버킷과 드릴다운 목록의 일치, 감사 기록 기간 | `VERIFIED (external, isolated)` (2026-09-28) — 격리 compose에서 수정 전 판(`a1dbedb`)과 수정 뒤 판을 같은 자료(KST 자정 앞뒤로 머지한 PR 20건)로 비교했고, 브라우저 시간대 UTC·Asia/Seoul·America/Los_Angeles에서 같은 표시와 같은 요청을 확인했다. 업그레이드 전후 원본 시각·M 번호·시퀀스는 같았다(원장 6.118장). 마이그레이션·재색인은 없다. 사내 실데이터는 `NOT RUN — internal environment required` — 업그레이드 뒤 검색에서 날짜를 골라 질의 칩이 `KST`인지, 시각에 마우스를 올려 원본 UTC가 보이는지, 통계에서 하루 버킷을 눌러 목록 수가 버킷 수와 같은지 본다 |
 | 미러 커밋 읽기가 promisor 원격·GHE API를 부르지 않음 (`CR-139`, 7.M) — 이름 변경·삭제+추가·병합 커밋의 메타데이터, mirror 모드 M 번호 근거, 기본 브랜치에 `.mailmap`이 있는 저장소 | `VERIFIED (external)` (2026-10-01) — 요청 수를 원격이 세는 HTTP 원격과 실제 blobless 미러, Git 2.54.0(워커 이미지)·2.34.1, 수정 전 재현과 수정 뒤(원장 6.130장). **사내 GHE의 한도 회복과 PIPE `PERMISSION_UNAVAILABLE` 재발 여부는 `NOT RUN — internal environment required`** (7.M) |
+| source를 끝까지 (`CR-138`, 7.N) — `offset` 없는 큰 파일·폴더, GitHub 3,000개 뒤의 변경, All history, PIPE 참고 구현, 큰 파일을 읽는 동안의 search-api 메모리(`DEV-803`), 160만 줄을 넘는 파일의 끝(`DEV-804`) | `VERIFIED (external)` (2026-10-01) — GitHub 문서의 규칙을 따르는 GHE 대역(1MB 넘는 Contents는 object·raw만, 100MB 넘는 blob은 주지 않음, 변경 목록 3,000개)과 실제 Chromium → next start → search-api → 실제 GitHubTransport, 실제 PIPE mTLS 리스너로 확인했다(원장 6.129장). **사내 GHES의 실제 응답(100MB 초과의 상태 코드, 3,000개 경계의 `changed_files`, 원시 본문 속도)은 `NOT RUN — internal environment required`** (7.N) |
 
 **외부에서 증명할 수 없는 것을 통과로 적지 않는다.** 사내 반입 뒤 이 표의 아래쪽을 실제로 실행하고 그 결과를 기록한다.
 
@@ -1802,6 +1803,46 @@ C="docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/sing
 **결과를 기록한다.** 1~5의 전·후 수치를 `agent-context/upstream-feedback.md`의 해당 항목(상류 반영 주석 아래)에 적는다.
 그 전까지 이 확인은 `NOT RUN — internal environment required`다.
 
+### 7.N 큰 source를 끝까지 — CR-138이 들어간 판의 사내 확인 (WP-119 / FR-SRC-001~004 · FR-INT-001, `CR-138`)
+
+**무엇이 바뀌었나.** source 조회(파일·폴더·History·Diff 변경 목록·Time-lapse)에 제품 자체의 총량 상한이 없다. 한 번에 읽는
+양(파일 1 MiB 창, 폴더 5,000개, 이력 50개, 변경 목록 100개·트리 비교 1,000개)과 한 요청의 기한 120초는 그대로이고, 화면과
+PIPE가 다음 위치로 끝까지 잇는다. 옛 판에서 256 KiB·4,000줄을 넘던 파일, 5,000개를 넘던 폴더, GitHub 3,000개를 넘던 변경,
+로드한 리비전 밖의 이력이 이제 끝까지 열린다. 큰 파일을 읽는 동안 search-api가 받은 원시 바이트를 붙잡던 결함(`DEV-803`)과
+약 160만 줄을 넘는 파일의 끝에 스크롤이 닿지 않던 결함(`DEV-804`)도 고쳤다. **외부에서 확인한 것은 GHE 대역 위의 동작이다.**
+사내 GHES가 실제로 주는 응답은 아래로 확인한다.
+
+**PIPE를 먼저 맞춘다.** 이 판은 PIPE `protocol_version`을 `PSI-1.0`으로 둔 채 응답의 뜻을 두 군데 바꿨다(PIPE 인계
+CONTRACT_DIFF D-28): `offset` 없는 파일 조회는 1 MiB를 넘으면 첫 창과 `next_offset`이고, 5,000개를 넘는 폴더는 첫 5,000개와
+`next_offset`이다. PIPE가 `next_offset`을 따르지 않으면 큰 파일·폴더의 첫 부분을 전부로 다룬다 — **이 판을 켜기 전에 PIPE
+담당에게 D-28의 1번 조치가 끝났는지 확인한다.**
+
+**사내에서 확인할 것.**
+
+1. **1MB를 넘는 파일** — Time-lapse·Diff로 1~5MB 텍스트 파일을 연다. 옛 판의 503(「…requires repository Contents read
+   permission.」)이 나오지 않고 끝까지 열려야 한다.
+2. **100MB를 넘는 파일이 있다면** — 그 파일을 열면 「GitHub does not serve files larger than 100 MB through its API.」여야 한다.
+   사내 GHES가 그 파일에 403이 아닌 다른 상태를 준다면(GitHub 문서에 상태가 없다) 다른 메시지가 나온다 — 그 메시지와
+   `docker compose logs search-api`의 해당 요청을 기록한다. 저장소 업로드 한도가 100MB를 넘게 설정돼 있는지도 GHES 관리
+   콘솔(Policies → Options → Repository upload limit)에서 본다(`OD-020`의 재료).
+3. **3,000개를 넘는 변경** — 큰 PR·커밋의 Diff를 열어 「Changed files N」이 GHES 화면의 변경 파일 수와 같은지 본다. 3,000개
+   뒤는 「GitHub lists at most 3,000 changed files. The rest were found by comparing the two trees …」 안내와 함께 이어져야 한다.
+4. **긴 이력** — 수백 개를 넘는 리비전이 있는 파일을 Time-lapse로 열고 범위 「All history」로 분석한다. 1,000개를 넘으면
+   확인 문구가 나오고, 분석이 끝까지 가거나 Cancel → 「Continue analysis」로 이어져야 한다.
+5. **search-api 메모리와 다른 사용자의 응답** — 수십 MB 파일을 Time-lapse로 여는 동안 search-api 메모리를 본다. 수백 MB 안에
+   머물러야 한다(옛 판은 받은 원시 바이트만큼 수 GB로 늘었다). 같은 동안 다른 사용자의 검색이 평소처럼 답하는지 본다.
+
+   ```bash
+   docker stats --no-stream $(docker compose -p pr-search ps -q search-api)
+   ```
+
+6. **GHE 원시 본문 속도** — 100MB에 가까운 파일의 마지막 창은 한 요청(120초) 안에 앞 100MB를 다시 받는다(GitHub API에 바이트
+   범위가 없다). 「Source data could not be loaded from GitHub in time. Please retry.」가 큰 파일의 뒤쪽에서만 나면 GHE에서
+   search-api로 오는 속도가 초당 1MB 아래인지 본다.
+
+**결과를 기록한다.** 1~6의 결과(특히 2의 실제 응답과 5의 메모리)를 `agent-context/upstream-feedback.md`에 새 항목으로 적는다.
+그 전까지 이 확인은 `NOT RUN — internal environment required`다.
+
 ## 8. 문제 해결
 
 | 증상 | 확인 |
@@ -1813,8 +1854,12 @@ C="docker compose -p pr-search --env-file deploy/single-host/.env -f deploy/sing
 | 구간 화면(Ranges)이 「Range queries do not support the kind: filter」로 결과를 그리지 않는다 | 링크나 손으로 고친 URL의 `q`에 `kind:`가 있다(`CR-130`). 구간은 PR과 커밋을 정본 서수로 함께 보인다 — URL에서 `kind:`를 빼고 다시 Load한다. 유형으로 좁힌 구간은 지원하지 않는다(`OD-019`). 이 판 이전 빌드는 같은 URL이 500이었다 |
 | source 화면(Diff·Time-lapse·파일 보기)이 「Source data could not be loaded from GitHub in time. Please retry.」로 끝난다 | 한 source 요청의 기한 120초를 넘었다(`CR-132`). 큰 파일의 뒤쪽 창은 GitHub가 바이트 범위를 주지 않아 앞부분을 다시 받는다 — GHE와 search-api 사이가 느리면(1 MiB/s 미만) 100MB에 가까운 파일의 마지막 창이 기한을 넘을 수 있다. Retry는 그 창부터 다시 읽는다. 여러 사용자가 큰 파일을 동시에 열면 원시 읽기는 프로세스당 2개씩 줄을 선다(다른 GitHub 조회는 막지 않는다). 계속되면 `docker compose logs search-api`의 GHE 응답 시간과 GHE 쪽 부하를 본다 |
 | 감사 로그에 `source:*` 행의 결과가 `CANCELLED`다 | 오류가 아니다(`CR-132`). 사용자가 로딩 중 Cancel을 누르거나 창을 닫아 연결을 끊었고, search-api가 그 요청의 GHE 호출을 멈췄다. 같은 사용자의 바로 뒤 행이 Retry다 |
-| Diff 모달이 「GitHub lists at most 3,000 changed files for one change, so this list may be incomplete.」를 보인다 | GitHub API 자체의 한계다(`CR-132`). 「Load the complete list」가 두 커밋의 트리를 직접 비교해 전체 경로를 잇는다 — 이 목록에는 줄 수와 이름 변경이 없다(「—」). 디렉터리가 매우 많으면 트리 비교가 여러 GHE 호출을 쓴다 |
+| Diff 모달의 변경 목록에 「GitHub lists at most 3,000 changed files. The rest were found by comparing the two trees, so their line counts and renames are not available (—).」가 보인다 | GitHub API 자체의 한계다(`CR-132`·`CR-138`). 화면이 두 커밋의 트리를 스스로 비교해 3,000개 뒤의 경로를 잇는다 — 그 파일에는 줄 수와 이름 변경이 없다(「—」). 디렉터리가 매우 많으면 트리 비교가 여러 GHE 호출을 쓴다. 정확히 3,000개를 바꾼 변경도 트리 비교를 한 번 더 하지만, 더해지는 파일이 없으면 이 안내는 없다. 읽는 동안에는 「Loading changed files… N so far.」와 Stop loading files, 멈추면 Continue loading files가 그 페이지부터 잇는다 |
 | Files & folders 검색이 오래 「Listing files… N paths」에 머물거나 감사 로그에 `source:paths:<저장소>` 행이 여러 개 쌓인다 | 오류가 아니다(`CR-133`). 파일이 매우 많은 저장소는 GitHub의 재귀 목록이 잘리거나(10만 항목·7MB) 늦어(45초) search-api가 디렉터리를 걸어 읽고, 한 페이지(경로 5,000개 또는 디렉터리 100개)마다 감사 한 행을 남긴다. 사용자는 Cancel 뒤 「Continue listing」으로 마지막 경로 뒤부터 잇는다. 목록은 저장하지 않으므로 화면을 새로 열면 다시 읽는다 |
+| Time-lapse가 「All history of this path has N revisions up to the selected one. …」에서 멈춰 있다 | 오류가 아니다(`CR-138`). 1,000개를 넘는 이력은 그만큼의 파일 버전을 GHE에서 읽으므로 한 번 확인받는다. 「Analyze N revisions」로 진행하고, 언제든 Cancel 뒤 「Continue analysis」가 멈춘 리비전부터 잇는다. 리비전마다 파일 전체를 창으로 읽으므로 큰 파일의 긴 이력은 GHE 호출과 전송이 많다 — 계속 느리면 GHE 응답 시간과 부하를 본다 |
+| source 화면에 「GitHub asked to wait — trying again in N s.」가 보인다 | GHE가 한도(429와 `Retry-After`)나 일시 장애(502·503)로 답했다(`CR-138`). 화면이 같은 위치에서 4번까지 다시 청한다. 60초 넘게 기다리라고 하면 멈추고, 「Continue …」·Retry가 그 자리부터 잇는다. 자주 나면 그 App 설치의 rate limit 잔량을 본다(7.M의 5) |
+| Time-lapse가 「These revisions changed too many lines to analyze in the browser (about N MB …). Analyze a shorter range.」로 멈춘다 | 브라우저 탭을 지키는 저장량 예산(1.5 GiB)을 넘었다(`CR-138`). 리비전 수가 아니라 바뀐 줄의 양이다 — 리비전마다 파일 전체를 다시 쓰는 생성 파일에서 난다. 더 짧은 범위를 고른다 |
+| 파일이 「GitHub does not serve files larger than 100 MB through its API.」로 열리지 않는다(API·PIPE는 200 `too_large`) | GitHub API 자체의 원천 한계다(`CR-138`). 본문을 다른 길로 읽지 않는다 — 미러에는 blob이 없다(`OD-020`). 100MB 이하 파일을 GitHub가 거절했다면 이 메시지가 아니라 503 `SOURCE_PERMISSION_REQUIRED`(App의 Contents 권한)다 |
 | 화면이나 API 응답의 오류에 `Reference ID`(또는 본문 `correlation_id`)가 있다 | 그 값으로 `docker compose logs search-api`의 출력을 찾는다(`grep <ID>`). `http.unhandled_error` 줄의 `route`(경로 패턴)·`stage`(수명 주기 단계)·`error_kind`(`elasticsearch`·`postgres`·`redis`·`github`·`network`·`application`)·`error_code`·`frames`(호출 위치)가 원인을 가리킨다(`CR-129`). 로그에는 오류 문구와 검색어가 없다 — 무엇을 검색했는지는 사용자에게 묻거나, 조회가 끝난 검색이면 감사 기록을 같은 ID로 본다. `http.client_error`는 본문을 읽지 못한 요청이다. web 프록시의 헤더 `x-correlation-id`는 다른 값이다(`DEV-790`) — 본문이나 화면의 값을 쓴다 |
 | 업그레이드 뒤 화면의 시각이 9시간 달라 보인다 | 이 판부터 화면은 시각을 한국 시간(`… KST`)으로 그린다(`CR-127`). 저장된 값은 바뀌지 않았다 — 시각에 마우스를 올리면 원본 UTC가 보인다. API와 CSV·JSON 내보내기의 시각은 여전히 UTC다 |
 | 같은 날짜로 검색했는데 결과가 전과 다르다, 또는 질의 칩·날짜 필터에 `UTC`가 붙어 있다 | 시간대 없는 옛 날짜 조건(공유 URL·저장된 검색)은 UTC 하루로 그대로 실행된다(`CR-127`) — 칩의 `… UTC`, 작업 공간 날짜 필터의 `(UTC)`가 그 표시다. 한국 날짜로 찾으려면 날짜를 다시 고르거나 질의에 시간대를 붙인다(`merged:2026-09-27..2026-09-27@Asia/Seoul`). 저장된 검색은 자동으로 바뀌지 않으므로 새 조건으로 다시 저장한다 |
