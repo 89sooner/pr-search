@@ -8,7 +8,8 @@ export interface SourceRestCommit { sha: string; parents: { sha: string }[]; aut
 export interface SourceRestFile { filename: string; previous_filename?: string; status: string; additions: number; deletions: number }
 export interface SourceContent { type: string; size: number; sha: string; encoding?: string; content?: string }
 export interface SourceGitTree { sha: string; truncated?: boolean; tree: { path: string; sha: string; type: string; mode: string; size?: number }[] }
-export interface SourcePr { number: number; title: string; body: string | null; base: { sha: string }; head: { sha: string } }
+/** `changed_files`는 PR의 변경 파일 전체 수다 (CR-138). 파일 목록이 GitHub의 3,000개 상한에서 잘렸는지 가른다. */
+export interface SourcePr { number: number; title: string; body: string | null; base: { sha: string }; head: { sha: string }; changed_files?: number }
 /** 호출마다 붙는 선택 사항 (CR-132). `signal`은 호출자의 취소·요청 기한이다. */
 export interface SourceCallOptions { readonly signal?: AbortSignal }
 export class GitHubSourceReader {
@@ -29,10 +30,10 @@ export class GitHubSourceReader {
    * (`timeoutMs`)은 호출자가 따로 준다(기본은 전송 설정의 기한).
    */
   treeRecursive(ref: RepoRef, sha: string, options: SourceCallOptions & { readonly timeoutMs?: number } = {}) { return this.get<SourceGitTree>(ref, `/git/trees/${encodeURIComponent(sha)}`, { recursive: 1 }, options); }
-  content(ref: RepoRef, sha: string, path: string, options: SourceCallOptions = {}) { return this.get<SourceContent>(ref, `/contents/${path.split('/').map(encodeURIComponent).join('/')}`, { ref: sha }, options); }
   /**
    * 파일 메타 (CR-132). object 미디어 타입은 1~100MB 파일에도 답한다(본문은 빈 문자열, `encoding: none`). 1MB 이하는
-   * base64 본문을 함께 준다. `download_url`은 따라가지 않는다.
+   * base64 본문을 함께 준다. `download_url`은 따라가지 않는다. CR-138: 파일 조회는 이것만 쓴다 — 기본 미디어 타입의 Contents
+   * (1MB를 넘으면 GitHub가 403을 준다)를 읽던 `content()`는 없앴다.
    */
   contentObject(ref: RepoRef, sha: string, path: string, options: SourceCallOptions = {}) {
     return this.get<SourceContent>(ref, `/contents/${path.split('/').map(encodeURIComponent).join('/')}`, { ref: sha }, { ...options, accept: 'application/vnd.github.object+json' });

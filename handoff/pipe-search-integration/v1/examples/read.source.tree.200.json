@@ -32,7 +32,11 @@
           "size": 5
         }
       ],
-      "truncated": false
+      "truncated": false,
+      "tree_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "offset": 0,
+      "next_offset": null,
+      "total": 1
     }
   }
 }

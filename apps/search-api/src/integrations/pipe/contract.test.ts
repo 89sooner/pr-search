@@ -21,7 +21,7 @@ import { DEFAULT_RESOLVE_LIMIT } from '../../resolve/service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from '../../repositories/overview.js';
 import { SEARCH_TIMEOUT_MS } from '../../search/routes.js';
 import { DEFAULT_SIZE, MAX_SIZE, TRACK_TOTAL_HITS } from '../../search/service.js';
-import { GITHUB_BLOB_MAX_BYTES, SOURCE_MAX_BYTES, SOURCE_MAX_ENTRIES, SOURCE_MAX_LINES, SOURCE_PATHS_RECURSIVE_TIMEOUT_MS, SOURCE_PATHS_WALK_PAGE, SOURCE_PATHS_WALK_TREE_CALLS, SOURCE_TREE_DIFF_PAGE, SOURCE_TREE_PAGE_ENTRIES, SOURCE_WINDOW_BYTES } from '../../source/service.js';
+import { GITHUB_BLOB_MAX_BYTES, GITHUB_CHANGED_FILES_MAX, GITHUB_CHANGED_FILES_PAGES, GITHUB_CHANGED_FILES_PER_PAGE, SOURCE_PATHS_RECURSIVE_TIMEOUT_MS, SOURCE_PATHS_WALK_PAGE, SOURCE_PATHS_WALK_TREE_CALLS, SOURCE_TREE_DIFF_PAGE, SOURCE_TREE_PAGE_ENTRIES, SOURCE_WINDOW_BYTES } from '../../source/service.js';
 import { SOURCE_REQUEST_DEADLINE_MS } from '../../source/routes.js';
 import { CLOCK_SKEW_SECONDS, MAX_ASSERTION_LENGTH, MAX_ASSERTION_TTL_SECONDS } from './assertion.js';
 import { PROTOCOL_VERSION, PSI_ERRORS, PSI_ERROR_CODES } from './errors.js';
@@ -87,6 +87,8 @@ interface MappedOperation {
   readonly query_keys: readonly string[];
   readonly original: { readonly api_id: string; readonly method: string; readonly path: string } | null;
   readonly limits: Record<string, number>;
+  /** GitHub API 자체의 한계 (CR-138). `limits`(한 번의 작업량)와 가른다. */
+  readonly upstream_limits?: Record<string, number>;
   readonly integration_error_codes: readonly string[];
   readonly original_error_schema: string | null;
 }
@@ -308,7 +310,7 @@ describe('operation-map.json이 코드와 같다', () => {
     );
   });
 
-  /** map의 상한 이름 → 코드 상수. 여기 없는 상한은 원본 route의 리터럴이다(`page_max` 등). */
+  /** map의 상한 이름 → 코드 상수. 여기 없는 상한은 원본 route의 리터럴이다(`commits_per_page` 등). */
   const LIMIT_CONSTANTS: Record<string, number> = {
     assertion_chars_max: MAX_ASSERTION_LENGTH,
     assertion_lifetime_seconds_max: MAX_ASSERTION_TTL_SECONDS,
@@ -320,14 +322,11 @@ describe('operation-map.json이 코드와 같다', () => {
     es_timeout_ms: SEARCH_TIMEOUT_MS,
     track_total_hits: TRACK_TOTAL_HITS,
     source_commits_max: MAX_SOURCE_COMMITS,
-    entries_max: SOURCE_MAX_ENTRIES,
-    file_bytes_max: SOURCE_MAX_BYTES,
-    file_lines_max: SOURCE_MAX_LINES,
-    // CR-132: 이어 읽기의 한 번 양·원천 한계·한 요청의 기한.
+    // CR-132: 이어 읽기의 한 번 양·한 요청의 기한. CR-138: 총량 상한(`entries_max`·`file_bytes_max`·`file_lines_max`)은 없앴다.
     tree_page_entries: SOURCE_TREE_PAGE_ENTRIES,
     tree_listing_page: SOURCE_TREE_DIFF_PAGE,
     window_bytes: SOURCE_WINDOW_BYTES,
-    blob_bytes_max: GITHUB_BLOB_MAX_BYTES,
+    files_per_page: GITHUB_CHANGED_FILES_PER_PAGE,
     request_deadline_ms: SOURCE_REQUEST_DEADLINE_MS,
     // CR-135: blame의 GitHub GraphQL 호출 기한과 GraphQL 전용 동시 상한(프로세스당).
     blame_call_timeout_ms: SOURCE_BLAME_TIMEOUT_MS,
@@ -337,6 +336,14 @@ describe('operation-map.json이 코드와 같다', () => {
     paths_walk_tree_calls: SOURCE_PATHS_WALK_TREE_CALLS,
     paths_recursive_timeout_ms: SOURCE_PATHS_RECURSIVE_TIMEOUT_MS,
   };
+  /** `upstream_limits`의 이름 → 코드 상수 (CR-138). GitHub API의 한계이고 제품 상한이 아니다. */
+  const UPSTREAM_CONSTANTS: Record<string, number> = {
+    blob_bytes_max: GITHUB_BLOB_MAX_BYTES,
+    page_max: GITHUB_CHANGED_FILES_PAGES,
+    changed_files_max: GITHUB_CHANGED_FILES_MAX,
+  };
+  /** source 조회의 `limits`에 올 수 있는 이름 — 한 요청·한 페이지·한 창의 작업량과 기한뿐이다 (CR-138). */
+  const SOURCE_WORK_LIMITS = new Set(['tree_page_entries', 'tree_listing_page', 'window_bytes', 'files_per_page', 'commits_per_page', 'request_deadline_ms', 'blame_call_timeout_ms', 'graphql_concurrency_max', 'paths_walk_page', 'paths_walk_tree_calls', 'paths_recursive_timeout_ms']);
   const OPERATION_LIMITS: Record<string, Record<string, number>> = {
     'read.repositories': { limit_default: DEFAULT_PAGE_SIZE, limit_max: MAX_PAGE_SIZE },
     'read.resolve': { limit_default: DEFAULT_RESOLVE_LIMIT, limit_max: MAX_PREFIX_CANDIDATES },
@@ -379,8 +386,20 @@ describe('operation-map.json이 코드와 같다', () => {
         const expected = OPERATION_LIMITS[id]?.[key] ?? LIMIT_CONSTANTS[key];
         if (expected !== undefined) expect([key, value]).toEqual([key, expected]);
       }
+      for (const [key, value] of Object.entries(mapped.upstream_limits ?? {})) expect([key, value]).toEqual([key, UPSTREAM_CONSTANTS[key]]);
     },
   );
+
+  it('CR-138 FR-INT-001 source 조회는 총량 상한을 알리지 않는다 — limits는 작업량·기한뿐이고 GitHub의 한계는 upstream_limits에 따로 있다', () => {
+    const source = operationMap.operations.filter((operation) => operation.id.startsWith('read.source.'));
+    expect(source.map((operation) => operation.id)).toEqual(['read.source.tree', 'read.source.history', 'read.source.diff', 'read.source.file', 'read.source.blame', 'read.source.paths']);
+    for (const operation of source) {
+      expect({ id: operation.id, unknown: Object.keys(operation.limits).filter((key) => !SOURCE_WORK_LIMITS.has(key)) }).toEqual({ id: operation.id, unknown: [] });
+      for (const retired of ['entries_max', 'file_bytes_max', 'file_lines_max']) expect({ ...operation.limits, ...operation.upstream_limits }).not.toHaveProperty(retired);
+    }
+    expect(source.find((operation) => operation.id === 'read.source.file')?.upstream_limits).toEqual({ blob_bytes_max: GITHUB_BLOB_MAX_BYTES });
+    expect(source.find((operation) => operation.id === 'read.source.diff')?.upstream_limits).toEqual({ page_max: GITHUB_CHANGED_FILES_PAGES, changed_files_max: GITHUB_CHANGED_FILES_MAX });
+  });
 });
 
 // ------------------------------------------------------------------ 예시

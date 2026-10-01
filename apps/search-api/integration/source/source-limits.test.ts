@@ -203,8 +203,10 @@ describe('CR-132 FR-SRC-003 큰 파일을 끝까지 (실제 전송)', () => {
     const accepts = ghe.requests.map((request) => request.accept ?? '');
     expect(accepts).toContain('application/vnd.github.object+json');
     expect(accepts).toContain('application/vnd.github.raw+json');
-    // 예전 호출(offset 없음)은 그대로다: 1MB를 넘는 파일을 기본 미디어 타입으로 청해 GitHub의 거절을 받는다.
-    expect((await get(app, url('files', 'file', { path: 'big.txt', revision }))).status).toBe(503);
+    // CR-138: offset 없는 예전 호출도 거절(전에는 기본 미디어 타입의 Contents가 1MB를 넘는 파일에 403 → 503)이 아니라 첫 창이다.
+    const legacy = await get<SourceFile>(app, url('files', 'file', { path: 'big.txt', revision }));
+    expect(legacy.status).toBe(200);
+    expect(legacy.body).toMatchObject({ status: 'text', offset: 0, text: windows[0]!.text, next_offset: windows[0]!.next_offset });
   });
 
   it('FR-SRC-003 줄바꿈 없는 2.5MB 한 줄을 문자 경계에서 끊어 이으면 원문과 같다', async () => {

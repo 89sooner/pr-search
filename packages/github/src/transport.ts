@@ -185,14 +185,20 @@ export class GitHubTransport {
       const body = response.body;
       if (body === null) return { bytes: new Uint8Array(0), eof: true };
       const reader = body.getReader();
-      // 취소·기한이 오면 읽기를 기다리지 않는다 — 본문 스트림이 신호에 반응하지 않는 구현에서도 끊긴다.
-      const aborted = new Promise<never>((_resolve, reject) => {
+      type Chunk = Awaited<ReturnType<typeof reader.read>>;
+      // 취소·기한이 오면 읽기를 기다리지 않는다 — 본문 스트림이 신호에 반응하지 않는 구현에서도 끊긴다. 신호 수신기는
+      // 읽기 한 번마다 붙였다가 그 읽기가 끝나면 뗀다(CR-138, DEV-803). 전에는 끝나지 않는 promise 하나와 매 조각을
+      // `Promise.race`로 겨뤘는데, 그 promise에 경합마다 남은 반응이 받은 조각을 붙잡아 이 호출의 신호가 사라질 때(기한
+      // 타이머 — 기본 기한 + 바이트 몫)까지 창 하나가 받은 바이트 전부(창 k는 앞 k MiB)가 메모리에 남았다.
+      const read = (): Promise<Chunk> => new Promise<Chunk>((resolve, reject) => {
+        if (signal.aborted) { reject(signal.reason); return; }
         const fail = (): void => { reject(signal.reason); };
-        if (signal.aborted) fail();
-        else signal.addEventListener('abort', fail, { once: true });
+        signal.addEventListener('abort', fail, { once: true });
+        reader.read().then(
+          (chunk) => { signal.removeEventListener('abort', fail); resolve(chunk); },
+          (error: unknown) => { signal.removeEventListener('abort', fail); reject(error); },
+        );
       });
-      aborted.catch(() => undefined);
-      const read = () => Promise.race([reader.read(), aborted]);
       const collected = new Uint8Array(window.length);
       let skipped = 0;
       let filled = 0;

@@ -1,8 +1,8 @@
 {
   "operation": "read.source.tree",
-  "title": "source 부분 결과 — 트리 절삭(5000 항목 상한 또는 GHE 절삭)",
+  "title": "source 부분 결과 — GHE가 디렉터리 목록을 잘랐다(truncated)",
   "captured": false,
-  "note": "실제 응답을 바탕으로 truncated만 참으로 바꾼 합성 예시다. 절삭된 트리를 완전한 목록으로 다루지 않는다.",
+  "note": "실제 응답을 바탕으로 truncated만 참으로 바꾼 합성 예시다. CR-138부터 truncated는 GitHub가 목록을 잘랐을 때뿐이다 — pr-search는 5000개에서 자르지 않고 next_offset으로 잇는다. 절삭된 트리를 완전한 목록으로 다루지 않는다.",
   "request": {
     "method": "GET",
     "path": "/internal/integrations/pipe/v1/read/source/acme%2Fpayments/tree",
@@ -33,7 +33,11 @@
           "size": 5
         }
       ],
-      "truncated": true
+      "truncated": true,
+      "tree_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "offset": 0,
+      "next_offset": null,
+      "total": 1
     }
   }
 }

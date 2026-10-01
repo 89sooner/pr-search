@@ -1,6 +1,6 @@
 # PR Search 작업 패키지
 
-> 상태: review | 버전: v2.97 | 갱신일: 2026-10-01
+> 상태: review | 버전: v2.99 | 갱신일: 2026-10-01
 
 ## WP-120 미러 커밋 읽기의 promisor 원격·API 호출 제거 (CR-139)
 
@@ -10,13 +10,21 @@
 - 완료 기준: 수정 전 코드에서 새 시험이 실패하는 것을 먼저 본다(원격 요청, 또는 `null`과 API 폴백). 수정 뒤에는 실제 blobless promisor 미러(HTTP 원격, 요청 수를 원격이 센다)에서 커밋 모양 13종의 `readCommit`이 원격 요청 0건으로 원본의 옛 명령 값과 필드마다 같고, 지연 인출을 허용하거나 원격이 모든 요청을 거절해도 같으며, 같은 커밋을 100번 읽어도 요청이 늘지 않는다. 미러에 없는 커밋은 여전히 `null`이고 원격을 부르지 않으며 폴백이 한 번 돈다. mirror 모드 M 번호 근거가 삭제+추가 squash 커밋에서 API를 부르지 않는다. patch-id는 여전히 blob을 요구한다. 변이가 시험을 죽이고, 전 계층 게이트가 초록이다.
 - 상태: done — main `d4967a9`(PR #264 squash 병합, 2026-10-01). 검증·병합 판정은 원장 6.130장이다. 사내 재검증은 NOT RUN이다(RUNBOOK 7.M).
 
+## WP-119 Source·Diff·Time-lapse의 남은 총량 제한 제거 (CR-138)
+
+- 요구사항: `FR-SRC-001` AC-4·AC-5, `FR-SRC-002` AC-2, `FR-SRC-003` AC-4·AC-5, `FR-SRC-004` AC-2, `FR-INT-001` AC-6(SRS v2.55), OD-020(열림). 새 API·ENT·오류 코드 없이 API-SRC-001~005·API-INT-011·013·014의 기본 동작이 바뀐다(PIPE `PSI-1.0` 유지, D-28). 구현 결함 DEV-803~DEV-805를 고치고 DEV-795를 해소한다. 선행: WP-113(이어 읽기, CR-132), WP-114(경로 목록, CR-133), WP-116(blame, CR-135), WP-118(PIPE 경로 목록, CR-137).
+- 범위: (1) search-api source 계층 — `offset` 없는 `/file`·`/tree`를 창·페이지로, 옛 `sourceFile`·`SOURCE_MAX_*`·`GitHubSourceReader.content()` 제거, 100MB 원천 한계 판정(Contents 403이면 트리 항목 크기, 걷기의 한도·취소는 그대로)과 30쪽 `truncated`. (2) `GitHubTransport.#readWindow`의 조각 보유(DEV-803). (3) GHE 대역의 대형 픽스처·원천 한계 모형·실패 주입. (4) 웹 — 변경 목록 자동 이어 읽기와 트리 비교 자동 전환·가상 목록, Time-lapse All history·진행·취소·이어서 분석·일시 오류 재시도, 계보 압축 저장(`TRACE_MAX_CELLS` 제거), 트리·History·리비전 목록·검색 결과의 스크롤 이어 읽기, 브라우저 높이 한계를 넘는 표의 압축 가상 스크롤(DEV-804), 옛 `compareLines`·`traceLines`를 시험 비교 기준으로. (5) PIPE 계약(operation map·OpenAPI·예시·CONTRACT_DIFF D-28·HANDOFF·DEPLOYMENT·manifest)과 반복 호출 참고 구현(`reference/source-complete.mjs` — 재시도·이어 읽기). (6) 시험 — 단위·통합·회귀·a11y·E2E, 실제 Chromium 화면, 실제 PIPE 리스너. (7) SRS v2.55·PRD·용어집·매트릭스·UI 명세·API 계약·백엔드·프런트엔드·보안·RUNBOOK 7.N·8장, 원장.
+- 제외: mTLS 제거, PIPE 인증 간소화 구현(CR-136 검토 결과 포함), GraphQL blame 재설계, MNUMBER, 검색 색인 재구축, 100MB 초과 blob을 git 프로토콜로 읽는 대체 경로의 구현(OD-020 결정 대기), 새 Release 발행, 사내 적용.
+- 완료 기준: 지시서 29항의 열두 문장이 참이다 — 256 KiB·4,000줄·5,000개 때문에 거절·절삭하지 않고, GitHub 3,000개 뒤의 파일과 300개를 넘는 과거 리비전까지 닿으며, 큰 Diff는 근사로라도 모든 줄 범위를 표현하고, 일반 UI와 PIPE가 같은 원본 범위를 끝까지 읽으며, 대형 데이터를 한꺼번에 그리지 않고, 기한·동시성·취소는 남으며, 남은 제한은 GitHub 원천 한계뿐이다. 수정 전 main에서 대표 실패를 먼저 보고, 대형 픽스처(300 KiB·5 MiB·4,001줄·10만 줄·긴 한 줄·UTF-8 경계, 5,001·12,000개 디렉터리, 3,001·5,200개 변경, 1,050개 이력, 80 MiB 리비전)를 실제 Chromium → next start → search-api → 실제 GitHubTransport → GHE 대역과 실제 PIPE 리스너로 끝까지 읽으며, search-api 메모리와 다른 요청의 지연을 잰다. 새 시험은 변이로 죽는 것을 보고, 전 계층 게이트가 초록이며, 코드와 문서를 서로 다른 검토자가 리뷰한다.
+- 상태: in_progress — 브랜치 `feature/cr138-source-unbounded`(기준 main `eca5bd0`). 검증은 원장 6.129장이다.
+
 ## WP-118 사내 반입 중 사용자 수정 — PIPE 경로 목록 조회와 배포 설정 (CR-137)
 
 - 요구사항: `FR-INT-001` AC-5(고정 조회 12종), API-INT-016(PIPE `read.source.paths` — 원본 API-SRC-005 실행). 배포 설정은 요구사항을 바꾸지 않는다(DEV-801, 인프라 6장 Profile A 규칙의 루프백 예외). 선행: WP-097(PIPE 연동, CR-112), WP-114(경로 목록, CR-133), WP-116(blame, CR-135).
 - 범위: 사용자가 0.1.0-pilot.21 사내 반입 중 고친 여섯 파일의 의미 있는 변경(형식 정리는 되돌림), PIPE 계약(OpenAPI·operation map·예시·CONTRACT_DIFF D-27·HANDOFF·DEPLOYMENT·manifest), 계약·통합·회귀 시험, 요구사항·설계 문서, 원장.
 - 제외: `agent-context/upstream-feedback.md`가 요청한 결함 수정(git show → git log -1), compose가 넘기지 않는 나머지 태그 설정, 새 Release 발행, 사내 적용, PIPE 쪽 변경.
 - 완료 기준: 사용자 판과 의미가 같고(compose YAML 동일, PIPE 코드 토큰 동일), 계약 단위 시험·PIPE 통합 시험·회귀 시험이 새 조회와 루프백 규칙을 걸며(변이로 확인), 전 계층 게이트가 초록이다.
-- 상태: in_progress — 브랜치 `feature/cr137-pipe-source-paths`. 검증은 원장 6.128장이다.
+- 상태: done — main `bdf6416`(PR #263 squash 병합, 2026-10-01). 검증·병합 판정은 원장 6.128장이다.
 
 ## WP-117 PIPE 연동 인증 간소화 검토서 (CR-136)
 
@@ -307,7 +315,8 @@
 | WP ID | 이름 | REL | 선행 WP | 상태 |
 | --- | --- | --- | --- | --- |
 | WP-120 | 미러 커밋 읽기의 promisor 원격·API 호출 제거 | correction (CR-139) | WP-020, WP-067, WP-074 | done — main `d4967a9`(PR #264), 원장 6.130장 |
-| WP-118 | 사내 반입 중 사용자 수정 — PIPE 경로 목록·배포 설정 | 범위 변경 (CR-137) | WP-097, WP-114, WP-116 | in_progress — 브랜치 `feature/cr137-pipe-source-paths`, 원장 6.128장 |
+| WP-119 | Source·Diff·Time-lapse의 남은 총량 제한 제거 | 요구사항 변경 + correction (CR-138) | WP-113, WP-114, WP-116, WP-118 | in_progress — 브랜치 `feature/cr138-source-unbounded`, 원장 6.129장 |
+| WP-118 | 사내 반입 중 사용자 수정 — PIPE 경로 목록·배포 설정 | 범위 변경 (CR-137) | WP-097, WP-114, WP-116 | done — main `bdf6416`(PR #263), 원장 6.128장 |
 | WP-117 | PIPE 연동 인증 간소화 검토서 | 검토 (CR-136) | WP-097 | done — main `0d14990`(PR #260), 원장 6.127장 |
 | WP-116 | PIPE용 GraphQL blame | 범위 추가 (CR-135) | WP-085, WP-097, WP-113 | done — main `311fdb0`(PR #259), 원장 6.126장 |
 | WP-115 | 수동 대조 취소 시험의 대기 기준 | correction (CR-134) | WP-040, WP-059 | done — main `a02a145`(PR #258), 원장 6.125장 |

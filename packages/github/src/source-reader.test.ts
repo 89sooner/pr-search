@@ -7,8 +7,9 @@ describe('read-only source adapter wire contract', () => {
     const get = vi.fn().mockResolvedValue({}); const getPage = vi.fn().mockResolvedValue({ body: [], nextPage: null });
     const reader = new GitHubSourceReader({ get, getPage } as unknown as GitHubTransport);
     const ref = { owner: 'acme', repo: 'app' }; const sha = 'a'.repeat(40);
-    await reader.content(ref, sha, 'src/a b.ts');
-    expect(get).toHaveBeenLastCalledWith({ org: 'acme', path: '/repos/acme/app/contents/src/a%20b.ts', priority: 'realtime', query: { ref: sha } });
+    await reader.contentObject(ref, sha, 'src/a b.ts');
+    expect(get).toHaveBeenLastCalledWith({ org: 'acme', path: '/repos/acme/app/contents/src/a%20b.ts', priority: 'realtime', query: { ref: sha }, accept: 'application/vnd.github.object+json' });
+    expect('content' in reader).toBe(false);
     await reader.branch(ref, 'release/1');
     expect(get).toHaveBeenLastCalledWith({ org: 'acme', path: '/repos/acme/app/branches/release%2F1', priority: 'realtime' });
     await reader.history(ref, sha, 'src', 2);

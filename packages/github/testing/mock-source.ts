@@ -11,7 +11,11 @@ import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-export type MockFileContent = string | Buffer | { readonly submodule: string } | { readonly symlink: string };
+/**
+ * `oversized`는 본문 없이 크기만 있는 파일이다 (CR-138). 트리 항목은 그 크기를 싣고, Contents·Blobs API는 GitHub처럼 본문을
+ * 주지 않는다(403 `too_large`) — 100MB를 넘는 blob을 메모리에 만들지 않고 원천 한계를 모형으로 만든다.
+ */
+export type MockFileContent = string | Buffer | { readonly submodule: string } | { readonly symlink: string } | { readonly oversized: number };
 
 export interface MockSourceCommitInput {
   readonly message: string;
@@ -51,6 +55,8 @@ export interface MockSourceRepository {
   readonly commits: ReadonlyMap<string, CommitObject>;
   readonly pulls: ReadonlyMap<number, { readonly number: number; readonly title: string; readonly body: string | null; readonly base: string; readonly head: string }>;
   readonly commitPulls: ReadonlyMap<string, readonly number[]>;
+  /** 본문 없이 크기만 있는 blob의 SHA → 크기 (CR-138, `{ oversized }`). */
+  readonly oversized: ReadonlyMap<string, number>;
   /** 커밋 `index`의 `path`에 있는 blob SHA (단언용). */
   blobAt(index: number, path: string): string | undefined;
 }
@@ -67,6 +73,11 @@ export interface MockSourceOptions {
   readonly recursiveLimit?: number;
   /** 재귀 트리 응답을 늦추는 시간(ms) (CR-133). 호출 기한을 넘긴 재귀 목록이 걷기로 넘어가는지 본다. 기본 0. */
   readonly recursiveDelayMs?: number;
+  /**
+   * 요청 하나를 GitHub 대신 실패시킨다 (CR-138 — 한도·일시 장애 시험). 저장소 뒤의 경로(쿼리 포함, 예: `/git/blobs/<sha>`)와
+   * `Accept`를 받아 상태(와 헤더)를 돌려주면 그 응답으로 끝내고, `undefined`면 평소대로 답한다.
+   */
+  readonly fail?: (request: { readonly path: string; readonly accept: string }) => { readonly status: number; readonly headers?: Readonly<Record<string, string>> } | undefined;
 }
 
 export interface MockRawRead { readonly path: string; bytesSent: number; closedEarly: boolean; finished: boolean }
@@ -74,6 +85,10 @@ export interface MockRawRead { readonly path: string; bytesSent: number; closedE
 const MODE = { file: '100644', tree: '040000', gitTree: '40000', symlink: '120000', submodule: '160000' } as const;
 /** GitHub가 PR·커밋의 변경 파일을 나열하는 원천 상한. */
 export const GITHUB_CHANGED_FILES_LIMIT = 3000;
+/** Contents·Blobs API가 본문을 주는 최대 크기 (GitHub 문서의 100MB). 넘는 blob은 두 API 모두 주지 않는다 (CR-138). */
+export const GITHUB_API_BLOB_MAX = 100 * 1024 * 1024;
+/** 100MB를 넘는 blob에 대한 응답 — GitHub 문서는 상태를 적지 않는다. 1MB 제한과 같은 모양의 403으로 둔다. */
+const BLOB_TOO_LARGE = { message: 'This API returns blobs up to 100 MB in size. The requested blob is too large to fetch via the API.', errors: [{ resource: 'Blob', field: 'data', code: 'too_large' }] } as const;
 /** Contents API가 기본 미디어 타입으로 본문을 주는 크기 (GitHub 문서의 1MB). */
 const CONTENTS_INLINE_MAX = 1024 * 1024;
 
@@ -94,6 +109,7 @@ export function buildMockSource(input: MockSourceInput): MockSourceRepository {
   const trees = new Map<string, readonly TreeEntry[]>();
   const blobs = new Map<string, Buffer>();
   const commits = new Map<string, CommitObject>();
+  const oversized = new Map<string, number>();
   const snapshots: Map<string, MockFileContent>[] = [];
   const commitShas: string[] = [];
 
@@ -117,6 +133,11 @@ export function buildMockSource(input: MockSourceInput): MockSourceRepository {
         entries.push({ name, mode: MODE.file, type: 'blob', sha: storeBlob(bytes), size: bytes.length });
       } else if ('submodule' in content) {
         entries.push({ name, mode: MODE.submodule, type: 'commit', sha: content.submodule });
+      } else if ('oversized' in content) {
+        // 본문이 없으므로 SHA는 크기에서 만든 자리표시다 — 같은 크기의 가상 파일은 같은 blob이다.
+        const sha = gitHash('blob', Buffer.from(`oversized ${String(content.oversized)}`, 'utf8'));
+        oversized.set(sha, content.oversized);
+        entries.push({ name, mode: MODE.file, type: 'blob', sha, size: content.oversized });
       } else {
         const bytes = Buffer.from(content.symlink, 'utf8');
         entries.push({ name, mode: MODE.symlink, type: 'blob', sha: storeBlob(bytes), size: bytes.length });
@@ -155,11 +176,12 @@ export function buildMockSource(input: MockSourceInput): MockSourceRepository {
   const pulls = new Map((input.pulls ?? []).map((pull) => [pull.number, { number: pull.number, title: pull.title, body: pull.body ?? null, base: commitShas[pull.base] ?? '', head: commitShas[pull.head] ?? '' }] as const));
   const commitPulls = new Map(Object.entries(input.commitPulls ?? {}).map(([index, numbers]) => [commitShas[Number(index)] ?? '', numbers] as const));
   return {
-    owner: input.owner, repo: input.repo, branch: input.branch ?? 'main', commitShas, trees, blobs, commits, pulls, commitPulls,
+    owner: input.owner, repo: input.repo, branch: input.branch ?? 'main', commitShas, trees, blobs, commits, pulls, commitPulls, oversized,
     blobAt: (index, path) => {
       const content = snapshots[index]?.get(path);
       if (content === undefined) return undefined;
       if (typeof content === 'string' || Buffer.isBuffer(content)) return gitHash('blob', asBuffer(content));
+      if ('oversized' in content) return gitHash('blob', Buffer.from(`oversized ${String(content.oversized)}`, 'utf8'));
       return 'symlink' in content ? gitHash('blob', Buffer.from(content.symlink, 'utf8')) : undefined;
     },
   };
@@ -340,6 +362,8 @@ export function handleMockSource(
     response.end(JSON.stringify(body));
     return true;
   };
+  const injected = options.fail?.({ path: `${rest}${url.search}`, accept });
+  if (injected !== undefined) return send(injected.status, { message: 'Injected failure' }, { ...injected.headers });
   const notFound = (): true => send(404, { message: 'Not Found' });
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
   const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get('per_page') ?? '30')));
@@ -394,6 +418,7 @@ export function handleMockSource(
   }
   found = /^\/git\/blobs\/([0-9a-f]{40})$/.exec(rest);
   if (found !== null) {
+    if (repo.oversized.has(found[1] ?? '')) return send(403, BLOB_TOO_LARGE);
     const bytes = repo.blobs.get(found[1] ?? '');
     if (bytes === undefined) return notFound();
     if (!accept.includes('raw')) return send(200, { sha: found[1], size: bytes.length, encoding: 'base64', content: bytes.toString('base64') });
@@ -413,6 +438,8 @@ export function handleMockSource(
       return send(200, object ? { type: 'dir', name: entry.name, path, sha: entry.sha, size: 0, entries } : entries);
     }
     if (entry.type === 'commit') return send(200, { type: 'submodule', name: entry.name, path, sha: entry.sha, size: 0, submodule_git_url: 'https://ghe.invalid/other.git' });
+    // 100MB를 넘는 파일은 어느 미디어 타입으로도 주지 않는다 — GitHub 문서의 「Greater than 100 MB: This endpoint is not supported」.
+    if ((entry.size ?? 0) > GITHUB_API_BLOB_MAX) return send(403, BLOB_TOO_LARGE);
     const bytes = repo.blobs.get(entry.sha) ?? Buffer.alloc(0);
     if (entry.mode === MODE.symlink) return send(200, { type: 'symlink', name: entry.name, path, sha: entry.sha, size: bytes.length, target: bytes.toString('utf8') });
     const inline = bytes.length <= CONTENTS_INLINE_MAX;

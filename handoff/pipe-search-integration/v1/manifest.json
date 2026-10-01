@@ -22,21 +22,21 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "8f327ebec1dbf583e2583556a5242c7f6d97d6e297f06344c7d33d5df40bcfa1",
+  "contract_checksum": "cd830b5da3fd3ed75135249501fb272095c01d619047d128547f9175d96442eb",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "019a2c71e78f4807b1805db0ad29fa8d19d60d969dbb6c91136a55522a247224",
+      "sha256": "b0731bbfec65c8e275936f3dd1d028feb6a48b9657755362b314da8aca9a7297",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
       "path": "DEPLOYMENT_AND_ROLLBACK.md",
-      "sha256": "d2c95fb81aab9f7a68f81c0f57300db7087564ba8e3ea8d62d01756f3051ba6d",
+      "sha256": "10ac635eee2f4b53cc90cf1289d58fee5e733586b911aaa2a4176cd8e966a8ce",
       "role": "guide — 배포·키 교체·회수·롤백"
     },
     {
       "path": "PIPE_INTEGRATION_HANDOFF.md",
-      "sha256": "42ff585988c45dc6c72360d8cec803a2653397f870a949e75e493af5c844105b",
+      "sha256": "c7d8a125ba824537c66b2ea6396d9cffd5d683dd37a6c6c73f4149f86046c6f0",
       "role": "guide — 먼저 읽을 문서"
     },
     {
@@ -86,7 +86,7 @@
     },
     {
       "path": "examples/README.md",
-      "sha256": "e1bd737acbb8ccfef779e4b8b090ebdfd9ad52c48df02ecf4efb0ddd64b2faff",
+      "sha256": "94cb42bb6538e4ef4630400a822ed5e1a2e9cb4a432c41a9879fc18a34916e86",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -215,8 +215,23 @@
       "role": "fixture — 합성 wire 예시"
     },
     {
+      "path": "examples/read.source.diff.200.truncated.json",
+      "sha256": "bd218ce538bccc53a015b3ebb4c53180e2250dba791ea638399de51f72d16eff",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.file.200.first-window.json",
+      "sha256": "6a3dbe0130d588140e3de4d55068b2742c7278e076e7c6ce56f249d79be544fd",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
       "path": "examples/read.source.file.200.json",
-      "sha256": "f21cbdd5052b58d45a232b234ebc38322196fc79dcbaa286de935239d7a9d310",
+      "sha256": "59a36abb1c9eff1b119ce975a208bcb8b8e9d57def69bc84321a45c9e81f4b1b",
+      "role": "fixture — 합성 wire 예시"
+    },
+    {
+      "path": "examples/read.source.file.200.too-large.json",
+      "sha256": "a1aac7cdcd8993399ec24aa5d7a9d87b85389a4c39f1dd4f045d50bee942a221",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -241,7 +256,7 @@
     },
     {
       "path": "examples/read.source.tree.200.json",
-      "sha256": "a09b7cf11baeb6e17ebaa958b9fd79c08dd9ab79c1197c7899724d40eaad22bd",
+      "sha256": "7793654677c4dd780b7eb6c2544d3b5370ee319f1e1e5018bd53527ae5432566",
       "role": "fixture — 합성 wire 예시"
     },
     {
@@ -251,18 +266,28 @@
     },
     {
       "path": "examples/read.source.tree.200.truncated.json",
-      "sha256": "c06ab563d7c83b3b8187e98ce756d1e86c0e78e86106aea5bbc25805ea20ae4c",
+      "sha256": "bc75e7284b1ecba0c33902f5870b862b684ff221f1ac9bf608a417cf06107e27",
       "role": "fixture — 합성 wire 예시"
     },
     {
       "path": "operation-map.json",
-      "sha256": "502b1d8a1f13d5d30ef3d18b312f72358d0a212625a23b71d10b094e97ceaf8f",
+      "sha256": "26696aad4aa23f9512193a230eae96e3c0e62d1d4159281429cfaa9893fb4669",
       "role": "contract — operation ↔ 원본 조회·query key·상한·오류 코드 (정본)"
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "0722d92d15ba87a3597a3a54a5405736a3b0116ca20ab2902e799e46d5644dcc",
+      "sha256": "3e1c2056e2b92eb54a82317865740685a256e7d24300d6fce9e3a9ae18913556",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
+    },
+    {
+      "path": "reference/source-complete.d.mts",
+      "sha256": "6e71a64d85cb1afe01062d049ef31aaa72855612bd7c042e9d26402eee1b0e99",
+      "role": "reference — source 조회를 끝까지 읽는 반복 호출 참고 구현 (CR-138)"
+    },
+    {
+      "path": "reference/source-complete.mjs",
+      "sha256": "b6a5b917e8434e0cdda97b69cf0e5b74a7d630ea255935e579a601de1ad58fcf",
+      "role": "reference — source 조회를 끝까지 읽는 반복 호출 참고 구현 (CR-138)"
     },
     {
       "path": "tools/README.md",
@@ -271,7 +296,7 @@
     },
     {
       "path": "tools/generate-manifest.mjs",
-      "sha256": "99e38beb2935dc2d785f3b35211fbf54e980297bd0331054cd76e9663414f48a",
+      "sha256": "125362c2c515c4469ad9eaffb2b381cb36e7cf0520c7d1bca92a2e600fa79e53",
       "role": "tool — 계약 검증 도구 입력"
     },
     {

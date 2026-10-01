@@ -1,6 +1,6 @@
 # PR Search 용어집
 
-> 상태: review | 버전: v0.24 | 갱신일: 2026-10-01
+> 상태: review | 버전: v0.25 | 갱신일: 2026-10-01
 
 CR-135 / FR-SRC-005: **blame(귀속)**은 한 고정 리비전의 파일에서 줄 구간마다 그 줄을 마지막으로 바꾼 커밋을 GitHub(GraphQL `Commit.blame`)가 계산해 준 결과다 — 구간은 시작·끝 줄(1부터)과 귀속 커밋(SHA·메시지 첫 줄·작성자 이름과 GHE 계정·시각)으로 이루어지고, 이 제품은 계산하지 않고 옮길 뿐이다. **관측 라인 이력**(Time-lapse, CR-097)과 다르다: 관측 라인 이력은 사용자가 고른 범위의 인접 리비전을 이 제품이 비교해 추정한 변화다. blame은 각 줄의 전체 수정 이력이 아니라 마지막 귀속 하나다. PIPE 연동의 고정 조회는 이 CR부터 11종이다(blame은 기능이 켜진 배포에서만). 금지 동의어: Time-lapse의 줄 연결을 「blame」이라 부르는 것, blame을 「라인 이력」이나 「lineage」라 부르는 것.
 
@@ -17,6 +17,8 @@ CR-115 / FR-SEQ-012: **M 번호 lightweight 태그**는 확정된 M 번호의 �
 CR-114 / FR-SRCH-001 AC-7: **M 번호 표기 문자열**(`M-<저장소 코드>-<번호>`)은 그 자체가 통합 검색의 **식별자**다 — 커밋 SHA·PR 번호·GHE URL과 같은 자리에서 유형 `merge_number`로 판별되며, 해석은 색인이 아니라 현재 에폭의 정본(`merge_sequence`)에서 한다. 저장소 코드가 이름의 숫자 부분이므로(OD-009) 같은 코드를 가진 저장소가 여럿일 수 있고, 그때 후보는 여럿이다. `mnum:`의 **단일 값**(`mnum:1450`)은 양끝이 같은 닫힌 범위이지 새 연산자가 아니다. `base:` **생략**은 저장소가 추적하는 시퀀스 브랜치가 하나뿐일 때만 성립한다 — 서버가 공간을 고르는 것이 아니다. 금지 동의어: "M 번호 검색어"(전문 검색과 혼동), "M 번호 필터"(`mnum:` 범위 조건과 혼동), "기본 브랜치 추론"(고를 것이 없을 때만 통과한다).
 
 CR-113 / FR-SEQ-001 AC-7·AC-8: **시퀀스 투영**(sequence projection)은 PostgreSQL 정본(`merge_sequence`·`sequence_space`·`pull_request_snapshot`·`commit_snapshot`)이 정한 서수를 커밋·PR 검색 문서의 `merge_seq`·`seq_epoch`·`sequence_space` 필드에 비추는 일이다. **재투영**(reprojection)은 이미 확정된 서수를 정본에서 색인으로 다시 비추는 것이며 **재채번**(reassignment, FR-SEQ-005)과 다르다 — 에폭·서수·M 번호·head를 바꾸지 않는다. **durable 투영 작업**(`sequence_work`의 `project` kind)은 공간 단위 `tail`(채번 뒤 증분)·`full`(전체 sweep)과 문서 단위 `doc`으로 나뉘며 generation·lease·CAS 규율(ENT-SEQ-006)을 그대로 쓴다. 문서별 판정은 `updated`(새로 반영)·`noop`(이미 같음)·`document_missing`(문서 없음)·`guard_rejected`(저장소·SHA·브랜치 불일치)·`stale_epoch`(구 에폭 작업)·`transient`(일시 실패·경쟁)이고, `updated=0`은 그 자체로 성공도 실패도 아니다. 「대상 없음」(직접 푸시·미수집·연결 미확정)과 「문서 생성 대기」는 구분한다. 금지 동의어: "색인 재채번", "서수 복구(재계산)".
+
+CR-138 용어: **총량 상한**은 사용자가 볼 수 있는 전체 양(파일 크기·줄 수·항목 수·커밋 수)을 자르는 제한이고 source 조회에는 없다. **작업량 상한**은 한 요청·한 페이지·한 창이 처리하는 양과 기한(파일 창 1 MiB, 디렉터리 5,000개 페이지, 요청 기한 120초, 동시 GitHub 호출)이며 다음 위치(`next_offset`·`next_page`·`next_after`)로 끝까지 이어진다. **원천 한계**는 GitHub API 자체가 주지 않는 것(100MB 초과 blob의 본문, 변경 파일 목록 3,000개, 재귀 트리 10만 항목)이며 제품 상한과 구분해 알린다. **All history**는 Time-lapse가 경로의 이력을 끝까지 읽어 첫 리비전부터 분석하는 범위다. **이어서 분석**은 멈춘 Time-lapse 분석을 분석한 부분을 남긴 채 멈춘 리비전부터 잇는 것이다.
 
 CR-112 / FR-INT-001: **PIPE 연동**(`pipe_integration`, 계약 `PSI-1.0`)은 PIPE 서버가 사용자 신원을 위임해 pr-search의 고정 조회 12종(CR-112의 10종에 CR-135 blame·CR-137 source 경로 목록)을 쓰는 서버 간 연결이다. **연동 client**(`client_id`)는 정책 파일에 등록된 PIPE 서버 하나이며 mTLS 인증서·서명 공개키·저장소 **허용 목록**(`repository_ids`)을 갖는다. 실효 범위는 언제나 사용자 **접근 범위**와 허용 목록의 교집합이다. **사용자 assertion**(`pipe-user-assertion+jwt`)은 PIPE 서버가 서명한 60초 이하의 JWS다 — PIPE 로그인 JWT가 아니며 역할·저장소를 싣지 않는다. **identity binding**(ENT-INT-001)은 운영자가 검증한 `(issuer, subject) → 기존 사용자` 연결이다(금지 동의어: 계정 병합, 자동 매핑). **로그인 문맥**(`auth_context_id`, ENT-INT-002)은 PIPE가 로그인 자격 하나에서 만든 불투명 식별자이고, **문맥 회수 표식**은 그 문맥의 재발급을 막는 PostgreSQL 행이다. **검색 grant**(`psig1_…`, ENT-INT-003)는 300초 이하의 검색 전용 불투명 토큰이다(금지 동의어: 세션, 세션 토큰 — 일반 세션과 서로를 대신하지 못한다). **긴급 회수**(ENT-INT-004)는 client·서명 키·인증서를 재기동 없이 즉시 끊는 기록이다. **진단 창**은 grant 만료 뒤 120초 동안 `GRANT_EXPIRED`를 구분해 알리는 기간이며 인증 수명이 아니다. **private 리스너**는 search-api 프로세스 안에서 공개 리스너와 다른 포트로 듣는 mTLS 전용 서버다.
 

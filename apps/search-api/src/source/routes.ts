@@ -9,7 +9,7 @@ import { sessionInvocation, type ReadInvocation } from '../auth/read-invocation.
 import { sendAuthError, toAuthError } from '../auth/errors.js';
 import { resolveRepository } from '../sequence/space.js';
 import { recordAuditBestEffort } from '../audit/recorder.js';
-import { FULL_SHA, SourceRangeError, SourceSnapshotChanged, sourceBlame, sourceComparison, sourceFile, sourceFileWindow, sourceHistory, sourcePaths, sourceTree, sourceTreeComparison, validPath, validRef } from './service.js';
+import { FULL_SHA, GITHUB_CHANGED_FILES_PAGES, SourceRangeError, SourceSnapshotChanged, sourceBlame, sourceComparison, sourceFileWindow, sourceHistory, sourcePaths, sourceTree, sourceTreeComparison, validPath, validRef } from './service.js';
 
 /**
  * 한 source 요청의 기한 (CR-132). 슬롯 대기와 여러 GitHub 호출을 모두 덮는다 — 원시 창 읽기의 호출 기한도 이 안이다.
@@ -48,8 +48,8 @@ export function registerSourceRoutes(app: FastifyInstance, options: SourceRouteO
  * **접근 범위 확인이 GHE 조회보다 먼저다**(PSI-D06). PIPE 연동 경로도 이 함수를 부른다.
  *
  * CR-132: 사용자가 연결을 끊거나(응답을 끝내기 전의 `close`) 요청 기한이 지나면 한 신호로 슬롯 대기와 GitHub 호출을
- * 멈춘다. 새 동작(`offset`, `listing=tree`, `related=all`)은 그 파라미터를 보낼 때만 켜진다 — 보내지 않는 호출의
- * 응답 모양은 예전과 같다.
+ * 멈춘다. `listing=tree`와 `related=all`은 그 파라미터를 보낼 때만 켜진다. CR-138: `offset`을 보내지 않은 `file`·`tree`도
+ * 첫 창·첫 페이지(offset 0)다 — 한 응답에 들지 않으면 `next_offset`으로 끝까지 잇는다(크기·줄 수·항목 수로 거절하지 않는다).
  */
 export async function executeSource(operation: SourceOperation, repository: string, query: Record<string, unknown>, reply: FastifyReply, invocation: ReadInvocation, options: SourceExecution): Promise<FastifyReply> {
   reply.header('cache-control', 'private, no-store').header('pragma', 'no-cache').header('x-content-type-options', 'nosniff');
@@ -80,7 +80,8 @@ export async function executeSource(operation: SourceOperation, repository: stri
     const ref = typeof query['ref'] === 'string' ? query['ref'] : '';
     const revision = typeof query['revision'] === 'string' ? query['revision'] : '';
     const treeSha = typeof query['tree_sha'] === 'string' ? query['tree_sha'] : '';
-    // CR-132: History 페이지의 1,000 상한을 없앴다 — 50,000번째 커밋 뒤도 이어 읽는다(Diff의 30은 GitHub의 3,000개 상한이라 그대로다).
+    // CR-132: History 페이지의 1,000 상한을 없앴다 — 50,000번째 커밋 뒤도 이어 읽는다(Diff의 30쪽은 GitHub의 3,000개 원천 상한이라
+    // 그대로다 — 그 뒤는 `listing=tree`가 잇는다).
     const page = query['page'] === undefined ? 1 : Number(query['page']);
     if (!validPath(path) || (ref && !validRef(ref)) || !Number.isSafeInteger(page) || page < 1 || (revision && !FULL_SHA.test(revision)) || (treeSha && (!FULL_SHA.test(treeSha) || !revision))) return fail(400, 'INVALID_PARAMETER', 'Invalid path, reference, or page.');
     const offsetText = typeof query['offset'] === 'string' ? query['offset'] : undefined;
@@ -105,11 +106,11 @@ export async function executeSource(operation: SourceOperation, repository: stri
       result = await sourceBlame(reader, repo, { revision, path }, call);
     } else if (operation === 'tree') {
       if (path && !treeSha) return fail(400, 'INVALID_PARAMETER', 'Expanding a directory requires its tree SHA and revision.');
-      result = await sourceTree(reader, repo, { ref, path, ...(treeSha ? { treeSha, revision } : {}), ...(offset !== undefined ? { offset } : {}) }, call);
+      result = await sourceTree(reader, repo, { ref, path, ...(treeSha ? { treeSha, revision } : {}), offset: offset ?? 0 }, call);
     } else if (operation === 'history') result = await sourceHistory(reader, repo, { ref, path, page }, options.es ? { es: options.es, scope } : undefined, call);
     else if (operation === 'file') {
       if (!path || !revision) return fail(400, 'INVALID_PARAMETER', 'A file path and full revision SHA are required.');
-      result = offset === undefined ? await sourceFile(reader, repo, revision, path, call) : await sourceFileWindow(reader, repo, revision, path, offset, call);
+      result = await sourceFileWindow(reader, repo, revision, path, offset ?? 0, call);
     } else if (query['listing'] !== undefined) {
       // CR-132: 트리 비교 목록. 호출자가 일반 비교에서 고정한 SHA를 그대로 받는다.
       const head = typeof query['head'] === 'string' ? query['head'] : '';
@@ -121,7 +122,7 @@ export async function executeSource(operation: SourceOperation, repository: stri
       const pr = query['pr'] === undefined ? undefined : Number(query['pr']);
       const commit = typeof query['commit'] === 'string' ? query['commit'] : undefined;
       if (['after', 'base', 'head'].some(key => query[key] !== undefined) || (query['related'] !== undefined && query['related'] !== 'all')) return fail(400, 'INVALID_PARAMETER', 'Base, head, and after need listing=tree; related accepts only all.');
-      if ((pr === undefined) === (commit === undefined) || (pr !== undefined && (!Number.isSafeInteger(pr) || pr < 1 || pr > 2147483647)) || (commit !== undefined && !FULL_SHA.test(commit)) || page > 30) return fail(400, 'INVALID_PARAMETER', 'Choose one PR number or full commit SHA.');
+      if ((pr === undefined) === (commit === undefined) || (pr !== undefined && (!Number.isSafeInteger(pr) || pr < 1 || pr > 2147483647)) || (commit !== undefined && !FULL_SHA.test(commit)) || page > GITHUB_CHANGED_FILES_PAGES) return fail(400, 'INVALID_PARAMETER', 'Choose one PR number or full commit SHA.');
       result = await sourceComparison(reader, repo, { page, ...(pr !== undefined ? { pr } : {}), ...(commit !== undefined ? { commit } : {}), ...(query['related'] === 'all' ? { related: 'all' as const } : {}) }, call);
     }
     resultCode = 'OK';

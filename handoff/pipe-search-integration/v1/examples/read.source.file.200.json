@@ -26,7 +26,9 @@
       "text": "hello\n",
       "size": 6,
       "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "reason": null
+      "reason": null,
+      "offset": 0,
+      "next_offset": null
     }
   }
 }

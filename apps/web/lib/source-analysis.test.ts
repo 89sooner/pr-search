@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compareLines, lines, traceLines, wordChanges } from './source-analysis';
+import { lines, wordChanges } from './source-analysis';
+import { compareLines, traceLines } from './source-line-oracle';
 
 describe('FR-SRC-003/004 source comparison and inferred lineage', () => {
   it('aligns insertion, removal, and replacement without losing source text', () => {

@@ -1,6 +1,16 @@
 # 요구사항-화면 추적 매트릭스
 
-> 상태: review | 버전: v1.29 | 갱신일: 2026-10-01
+> 상태: review | 버전: v1.30 | 갱신일: 2026-10-01
+
+| 추가 요구사항 (CR-138) | 화면 | 구현 단위 | 검증 |
+| --- | --- | --- | --- |
+| FR-SRC-001 AC-4 (페이지 위치 없는 디렉터리 조회도 첫 페이지와 다음 위치 — 5,000은 페이지 크기, 목록 끝에서 다음 페이지를 스스로) · AC-5(검색 결과 200개씩 이어 그림, 상한 없음) | W-001 Files & folders(스크롤 끝에서 다음 페이지, 「Show more entries」·「Show more matches」는 남는다) | WP-119 | test(`integration/source/source-unbounded.test.ts` 5,001·12,000개, `a11y/source-tree-search.test.tsx`) · QA-W001-73·89 |
+| FR-SRC-002 AC-2 (표 끝에서 다음 페이지를 스스로) | W-001 History(「Load older commits」는 남는다) | WP-119 | test(a11y) · 실제 화면 |
+| FR-SRC-003 AC-4 (창 위치 없는 파일 조회도 첫 창 — 256 KiB·4,000줄 거절 없음, 1MB 초과의 거짓 권한 오류 없음, 100MB 초과만 원천 한계, 일시 오류 재시도, 실패한 읽기는 받은 창 뒤부터) | W-001 Diff·Time-lapse 모달 | WP-119 | test(`source-unbounded.test.ts` 단위·통합, `source-jobs.test.ts`) · 수정 전 실패 기록 · QA-W001-83·84·87·88 |
+| FR-SRC-003 AC-5 (변경 목록을 버튼 없이 끝까지 — GitHub 목록 뒤 트리 비교로 자동 전환, 30쪽 `truncated` 보정(DEV-793), 멈춤·이어 읽기, 2,000개 넘으면 가상 목록) | W-001 Diff 모달 변경 목록(「Loading changed files… N so far」·「Stop loading files」·「Continue loading files」) | WP-119 | test(`source-changes.test.ts`, 통합, a11y) · 실제 화면 · QA-W001-74·85 |
+| FR-SRC-004 AC-2 (All history — 이력 페이지를 끝까지 읽고 첫 리비전부터 분석, 1,000개 넘으면 확인, 진행 「Loading revision x / N · Analyzing revision y / N」, 멈춘 뒤 이어서 분석, 셀 상한 대신 저장량 예산) | W-001 Time-lapse 모달 | WP-119 | test(`source-compute.test.ts` 옛 빌더와 무작위 대조, `source-jobs.test.ts`, a11y) · 실제 화면(1,000개 넘는 이력) · QA-W001-86·87 |
+| FR-INT-001 AC-6 (PIPE source 조회도 총량 상한 없이 끝까지 — 참고 구현, PSI-1.0 유지 D-28) | 없음 — 서버 간 API(API-INT-011·013·014) | WP-119 | test(`integration/integrations/pipe/source-unbounded.test.ts` — 실제 mTLS·실제 전송, 일반 API와 본문 대조, 창 도중 429·502 재시도·`resume` 이어 읽기·클라이언트 끊김, `src/integrations/pipe/source-complete.test.ts`, `contract.test.ts`) · QA-W001-90 |
+| FR-SRC-003 AC-4 (브라우저 높이 한계를 넘는 표도 마지막 행까지 — 압축 가상 스크롤, DEV-804) · 큰 파일을 읽는 동안 search-api 메모리(DEV-803) | W-001 Diff·Time-lapse 모달 | WP-119 | test(`a11y/source-virtual.test.tsx`, `packages/github/src/transport.test.ts` 메모리) · 실제 화면 S5(196만 줄 끝, search-api 239 MB) · QA-W001-91·92 |
 
 | 추가 요구사항 (CR-137) | 화면 | 구현 단위 | 검증 |
 | --- | --- | --- | --- |
@@ -93,10 +103,10 @@
 
 | 추가 요구사항 (CR-097) | 화면 | 컴포넌트 | API | 검증 |
 | --- | --- | --- | --- | --- |
-| FR-SRC-001 | W-001 | SourceTree | API-SRC-001, API-SRC-005 | source.test.ts, source-paths.test.ts, source-tree-search.test.tsx, verify-source-workspace.mjs |
+| FR-SRC-001 | W-001 | SourceTree | API-SRC-001, API-SRC-005 | source.test.ts, source-paths.test.ts, source-tree-search.test.tsx, source-unbounded.test.ts, verify-source-workspace.mjs |
 | FR-SRC-002 | W-001 | SourceHistory | API-SRC-002 | source.test.ts, verify-source-workspace.mjs, history-pull-requests.test.ts |
-| FR-SRC-003 | W-001, W-002, W-003 | DiffModal | API-SRC-003, API-SRC-004 | source-analysis.test.ts, source.test.ts, 브라우저 |
-| FR-SRC-004 | W-001, W-002, W-003 | TimeLapseModal | API-SRC-002~004 | source-analysis.test.ts, 브라우저 |
+| FR-SRC-003 | W-001, W-002, W-003 | DiffModal | API-SRC-003, API-SRC-004 | source-analysis.test.ts, source.test.ts, source-unbounded.test.ts, source-changes.test.ts, source-limits.test.tsx, 브라우저 |
+| FR-SRC-004 | W-001, W-002, W-003 | TimeLapseModal | API-SRC-002~004 | source-analysis.test.ts, source-compute.test.ts, source-jobs.test.ts, source-limits.test.tsx, 브라우저 |
 | FR-SRC-005 | 없음 (웹 화면 없음 — PIPE용, CR-135) | 없음 | API-SRC-006, API-INT-015 | source-blame.test.ts(packages/github·search-api 단위·통합), blame-disabled.test.ts(PIPE 통합) |
 
 > CR-096 / WP-084: NFR-007의 키보드·라벨·대비·반응형 확인은 전체 기존 화면에 적용한다. W-001의 template 배치를 유지하고 분석·운영·상세·저장된 검색은 같은 Radix 프리미티브/테마를 공유한다. 신규 화면 ID와 API는 없다. 영어 UI 및 테마 저장 검증은 구현 추적 원장의 CR-096 기록을 따른다.

@@ -6,12 +6,9 @@ import { compareTreePaths, walkTreeDiff, type TreeDiffEntry } from './tree-diff.
 
 const COMMIT_ALIAS = 'prs-commits' as const;
 
-export const SOURCE_MAX_BYTES = 256 * 1024;
-export const SOURCE_MAX_LINES = 4000;
-export const SOURCE_MAX_ENTRIES = 5000;
 /**
- * `offset`·`listing=tree`를 보낸 요청의 한 번에 읽는 양 (CR-132). 총량 상한이 아니다 — 응답이 다음 위치를 주고 끝까지
- * 이어 읽는다. 위의 세 상한은 그 파라미터를 보내지 않는 예전 호출(PIPE v1 포함)의 동작으로만 남는다.
+ * 한 번에 읽는 양 (CR-132). 총량 상한이 아니다 — 응답이 다음 위치를 주고 끝까지 이어 읽는다. CR-138부터 `offset`을 보내지 않는
+ * 예전 호출(PIPE v1 포함)도 같은 창·페이지의 첫 조각이다 — 파일 256 KiB·4,000줄, 디렉터리 5,000개의 총량 상한은 없다.
  */
 export const SOURCE_WINDOW_BYTES = 1024 * 1024;
 export const SOURCE_TREE_PAGE_ENTRIES = 5000;
@@ -31,6 +28,14 @@ export const SOURCE_PATHS_WALK_TREE_CALLS = 100;
 export const SOURCE_PATHS_RECURSIVE_TIMEOUT_MS = 45_000;
 /** GitHub Contents·Blobs API가 본문을 주는 최대 크기 — 제품 상한이 아니라 원천 한계다 (CR-132). */
 export const GITHUB_BLOB_MAX_BYTES = 100 * 1024 * 1024;
+const UPSTREAM_TOO_LARGE = 'GitHub does not serve files larger than 100 MB through its API.';
+/**
+ * GitHub가 PR·커밋의 변경 파일을 나열하는 원천 상한과 한 페이지의 파일 수(리더가 보내는 `per_page`) — 100개씩 30쪽이다
+ * (CR-138, 전에는 경로의 리터럴). 제품 상한이 아니다: 그 뒤는 트리 비교 목록(`listing=tree`)이 잇는다.
+ */
+export const GITHUB_CHANGED_FILES_MAX = 3000;
+export const GITHUB_CHANGED_FILES_PER_PAGE = 100;
+export const GITHUB_CHANGED_FILES_PAGES = GITHUB_CHANGED_FILES_MAX / GITHUB_CHANGED_FILES_PER_PAGE;
 export const FULL_SHA = /^[a-f0-9]{40}$/i;
 export class SourceSnapshotChanged extends Error {}
 /** 이어 읽기 위치가 대상의 범위 밖이거나 경계가 아니다 (CR-132) — 경로가 400으로 답한다. 문구는 고정 영어다. */
@@ -49,13 +54,14 @@ export async function pinRevision(reader: GitHubSourceReader, ref: RepoRef, inpu
   return { name, sha };
 }
 /**
- * 디렉터리 하나의 목록.
+ * 디렉터리 하나의 한 페이지 (CR-132 · CR-138).
  *
- * `offset`이 없으면 예전 동작이다 — 앞 5,000개(정렬 전)에서 자르고 `truncated`를 세운다. `offset`이 있으면(CR-132)
- * 목록 전체를 정렬한 뒤 [offset, offset + 5,000)을 돌려준다. 목록은 트리 SHA로 고정되므로 페이지끼리 섞이지 않는다 —
- * 다음 페이지는 응답의 `revision`·`tree_sha`로 청한다. `truncated`는 GitHub가 목록을 잘랐을 때뿐이다.
+ * 목록 전체를 정렬(디렉터리 먼저, 이름 순)한 뒤 [offset, offset + 5,000)을 돌려준다. `offset`을 보내지 않은 예전 호출도 첫
+ * 페이지(offset 0)다 — CR-138 전에는 정렬 전 앞 5,000개에서 자르고 `truncated`를 세웠다. 목록은 트리 SHA로 고정되므로
+ * 페이지끼리 섞이지 않는다 — 다음 페이지는 응답의 `revision`·`tree_sha`와 `next_offset`으로 청하고, `next_offset`이 `null`일
+ * 때만 목록이 끝났다. `truncated`는 GitHub가 목록을 잘랐을 때뿐이다.
  */
-export async function sourceTree(reader: GitHubSourceReader, ref: RepoRef, input: { ref: string; path: string; treeSha?: string; revision?: string; offset?: number }, options: SourceCallOptions = {}): Promise<SourceTree> {
+export async function sourceTree(reader: GitHubSourceReader, ref: RepoRef, input: { ref: string; path: string; treeSha?: string; revision?: string; offset: number }, options: SourceCallOptions = {}): Promise<SourceTree> {
   const pinned = input.treeSha && input.revision ? { name: input.ref || input.revision, sha: input.revision } : await pinRevision(reader, ref, input.ref, options);
   const root = input.treeSha ?? (await reader.commit(ref, pinned.sha, options)).tree.sha;
   const tree = await reader.tree(ref, root, options);
@@ -64,9 +70,6 @@ export async function sourceTree(reader: GitHubSourceReader, ref: RepoRef, input
     kind: item.type === 'tree' ? 'directory' : item.type === 'commit' ? 'submodule' : item.mode === '120000' ? 'symlink' : 'file', size: item.size ?? null,
   });
   const order = (a: SourceEntry, b: SourceEntry) => Number(b.kind === 'directory') - Number(a.kind === 'directory') || a.name.localeCompare(b.name);
-  if (input.offset === undefined) {
-    return { ...head, entries: tree.tree.slice(0, SOURCE_MAX_ENTRIES).map(entry).sort(order), truncated: tree.truncated === true || tree.tree.length > SOURCE_MAX_ENTRIES };
-  }
   const total = tree.tree.length;
   if (input.offset > total) throw new SourceRangeError('Offset is beyond the end of this directory.');
   const end = input.offset + SOURCE_TREE_PAGE_ENTRIES;
@@ -141,26 +144,21 @@ export async function sourceHistory(reader: GitHubSourceReader, ref: RepoRef, in
     return unavailable();
   }
 }
-export async function sourceFile(reader: GitHubSourceReader, ref: RepoRef, revision: string, path: string, options: SourceCallOptions = {}): Promise<SourceFile> {
-  const base: SourceFile = { repository: `${ref.owner}/${ref.repo}`, revision, path, status: 'missing', text: null, size: null, sha: null, reason: null };
-  try {
-    const result = await reader.content(ref, revision, path, options);
-    base.size = result.size ?? null; base.sha = result.sha ?? null;
-    if (result.type !== 'file') return { ...base, status: 'unsupported', reason: 'This object is not a regular file.' };
-    if (result.size > SOURCE_MAX_BYTES || (result.content?.length ?? 0) > SOURCE_MAX_BYTES * 1.5) return { ...base, status: 'too_large', reason: 'Source preview is limited to 256 KiB per file.' };
-    if (result.encoding !== 'base64' || typeof result.content !== 'string') return { ...base, status: 'unsupported', reason: 'The server did not provide previewable content.' };
-    const bytes = Buffer.from(result.content, 'base64');
-    if (bytes.length > SOURCE_MAX_BYTES) return { ...base, status: 'too_large', reason: 'Source preview is limited to 256 KiB per file.' };
-    if (bytes.includes(0)) return { ...base, status: 'binary', reason: 'Binary files cannot be displayed as text.' };
-    let text: string;
-    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { return { ...base, status: 'binary', reason: 'This file is not UTF-8 text.' }; }
-    if (text.startsWith('version https://git-lfs.github.com/spec/v1')) return { ...base, status: 'unsupported', reason: 'Git LFS objects are not downloaded for source preview.' };
-    if (text.split('\n').length > SOURCE_MAX_LINES) return { ...base, status: 'too_large', reason: 'Source preview is limited to 4,000 lines per file.' };
-    return { ...base, status: 'text', text };
-  } catch (error) {
-    if (error instanceof GitHubApiError && error.kind === 'not_found') { await reader.commit(ref, revision, options); return { ...base, reason: 'This path is not available at this revision.' }; }
-    throw error;
+/**
+ * `path`에 있는 blob의 크기와 SHA (CR-138). 고정 revision의 트리를 경로 조각마다 한 번씩 내려간다(비재귀). 경로가 blob이
+ * 아니거나 없으면 `null`이다. GitHub가 Contents를 주지 않은 이유가 100MB 원천 한계인지 가를 때만 부른다.
+ */
+async function blobAt(reader: GitHubSourceReader, ref: RepoRef, revision: string, path: string, options: SourceCallOptions): Promise<{ size: number; sha: string } | null> {
+  let tree = (await reader.commit(ref, revision, options)).tree.sha;
+  const parts = path.split('/');
+  for (let index = 0; index < parts.length; index += 1) {
+    const found = (await reader.tree(ref, tree, options)).tree.find(item => item.path === parts[index]);
+    if (found === undefined) return null;
+    if (index === parts.length - 1) return found.type === 'blob' && typeof found.size === 'number' ? { size: found.size, sha: found.sha } : null;
+    if (found.type !== 'tree') return null;
+    tree = found.sha;
   }
+  return null;
 }
 
 const LFS_POINTER = 'version https://git-lfs.github.com/spec/v1';
@@ -176,12 +174,18 @@ export function utf8Boundary(bytes: Uint8Array): number {
   return end - index >= need ? end : index;
 }
 /**
- * 본문의 한 창 (CR-132, `offset`).
+ * 본문의 한 창 (CR-132 · CR-138).
+ *
+ * 파일 조회는 늘 이 함수다 — `offset`을 보내지 않은 예전 호출(PIPE v1 포함)은 offset 0의 창이다(CR-138 전에는 기본 미디어
+ * 타입의 Contents 한 번으로 읽고 256 KiB·4,000줄을 넘으면 `too_large`였다). 한 창에 드는 파일(1 MiB 이하)은 한 응답에 완전한
+ * 본문이고 `next_offset`이 `null`이며, 넘는 파일은 첫 창과 `next_offset`이다 — `text`는 `next_offset`이 `null`일 때만 완전하다.
  *
  * 메타(object 미디어 타입)로 종류·크기·blob SHA를 알고, 본문이 메타에 함께 왔으면(base64, 1MB 이하) 그것을 쓰며, 아니면
  * blob SHA로 원시 창을 읽는다 — blob SHA는 내용 주소라 창끼리 다른 리비전이 섞이지 않는다. 창은 1 MiB를 넘지 않고 마지막
  * 줄바꿈 뒤에서 끊으며(줄이 창보다 길면 UTF-8 문자 경계), 다음 창의 바이트 위치를 `next_offset`으로 준다. 본문은 이 요청
- * 안에서만 산다(NFR-005 — 어디에도 저장하지 않는다). 판정 순서는 예전과 같되 크기 상한은 GitHub의 100MB뿐이다.
+ * 안에서만 산다(NFR-005 — 어디에도 저장하지 않는다). 크기로 거절하는 것은 GitHub API의 100MB 원천 한계뿐이다 — GitHub는 그
+ * 파일의 Contents를 주지 않으므로(문서: 「This endpoint is not supported」, 상태는 적혀 있지 않다) 권한 오류와 같은 403이면
+ * 트리 항목의 크기로 가른다. 바이너리·비UTF8·LFS 포인터·파일이 아닌 객체는 크기와 무관한 제한이다.
  */
 export async function sourceFileWindow(reader: GitHubSourceReader, ref: RepoRef, revision: string, path: string, offset: number, options: SourceCallOptions = {}): Promise<SourceFile> {
   const base: SourceFile = { repository: `${ref.owner}/${ref.repo}`, revision, path, status: 'missing', text: null, size: null, sha: null, reason: null, offset, next_offset: null };
@@ -190,11 +194,20 @@ export async function sourceFileWindow(reader: GitHubSourceReader, ref: RepoRef,
     meta = await reader.contentObject(ref, revision, path, options);
   } catch (error) {
     if (error instanceof GitHubApiError && error.kind === 'not_found') { await reader.commit(ref, revision, options); return { ...base, reason: 'This path is not available at this revision.' }; }
+    if (error instanceof GitHubApiError && error.kind === 'auth' && error.status === 403 && options.signal?.aborted !== true) {
+      // 걷기가 경로를 찾지 못하거나(권한·없음) 그 경로가 blob이 아니면 원래 403을 그대로 올린다. 한도·취소·기한·일시 장애는
+      // 걷기의 오류를 올린다 — 삼키면 429(`Retry-After`)나 취소가 권한 오류(503)로 바뀐다 (CR-138 리뷰).
+      const blob = await blobAt(reader, ref, revision, path, options).catch((walk: unknown) => {
+        if (walk instanceof GitHubApiError && (walk.kind === 'auth' || walk.kind === 'not_found')) return null;
+        throw walk;
+      });
+      if (blob !== null && blob.size > GITHUB_BLOB_MAX_BYTES) return { ...base, size: blob.size, sha: blob.sha, status: 'too_large', reason: UPSTREAM_TOO_LARGE };
+    }
     throw error;
   }
   base.size = meta.size ?? null; base.sha = meta.sha ?? null;
   if (meta.type !== 'file') return { ...base, status: 'unsupported', reason: 'This object is not a regular file.' };
-  if (meta.size > GITHUB_BLOB_MAX_BYTES) return { ...base, status: 'too_large', reason: 'GitHub does not serve files larger than 100 MB through its API.' };
+  if (meta.size > GITHUB_BLOB_MAX_BYTES) return { ...base, status: 'too_large', reason: UPSTREAM_TOO_LARGE };
   if (offset > meta.size) throw new SourceRangeError('Offset is beyond the end of the file.');
   const inline = meta.encoding === 'base64' && typeof meta.content === 'string' ? Buffer.from(meta.content, 'base64') : null;
   let bytes: Uint8Array; let eof: boolean;
@@ -223,9 +236,12 @@ export async function sourceComparison(reader: GitHubSourceReader, ref: RepoRef,
   let baseTip: string | null = null;
   const pullRequests: SourceComparison['pull_requests'] = [];
   let associationsUnavailable = false;
+  /** PR의 변경 파일 전체 수(GitHub `changed_files`). 커밋 비교에는 없다. */
+  let total: number | undefined;
   if (input.pr !== undefined) {
     const pr = await reader.pullRequest(ref, input.pr, options);
     head = pr.head.sha; baseTip = pr.base.sha;
+    total = typeof pr.changed_files === 'number' ? pr.changed_files : undefined;
     if (!FULL_SHA.test(head) || !FULL_SHA.test(baseTip)) throw new Error('Invalid upstream revision');
     base = (await reader.mergeBase(ref, baseTip, head, options)).merge_base_commit.sha;
     pullRequests.push({ number: pr.number, title: pr.title, body: pr.body });
@@ -249,9 +265,16 @@ export async function sourceComparison(reader: GitHubSourceReader, ref: RepoRef,
   const page = await reader.changes(ref, input.pr !== undefined ? { pr: input.pr } : { sha: head }, input.page, options);
   const files = Array.isArray(page.body) ? page.body : page.body.files ?? [];
   if (input.pr !== undefined) { const latest = await reader.pullRequest(ref, input.pr, options); if (latest.head.sha !== head || latest.base.sha !== baseTip) throw new SourceSnapshotChanged('Pull request changed'); }
+  // CR-138 (DEV-793): GitHub는 3,000개에서 멈추고 마지막(30번째) 페이지에 다음 링크를 주지 않는다 — 링크만 보면 잘린 목록도
+  // 완전해 보인다. 마지막 페이지가 가득하거나 PR의 전체 수가 3,000을 넘으면 잘렸을 수 있다고 본다. 전체 수는 거르는 데
+  // 쓰지 않고 더하는 데만 쓴다 — 실제 GHES가 경계에서 주는 `changed_files`는 확인하지 못했으므로, 그 값이 틀려도 목록이
+  // 조용히 끊기지 않게 한다(정확히 3,000개면 트리 비교를 한 번 더 하고, 그 목록이 같은 3,000개를 준다). 참이면 호출자는
+  // `listing=tree`로 끝까지 잇는다.
+  const lastPage = input.page >= GITHUB_CHANGED_FILES_PAGES;
+  const truncated = lastPage && (page.nextPage !== null || files.length >= GITHUB_CHANGED_FILES_PER_PAGE || (total !== undefined && total > GITHUB_CHANGED_FILES_MAX));
   return { repository: `${ref.owner}/${ref.repo}`, base, head, commit: gitCommit(commit), pull_requests: pullRequests, pull_requests_unavailable: associationsUnavailable,
     files: files.map(file => ({ path: file.filename, previous_path: file.previous_filename ?? null, status: file.status, additions: file.additions, deletions: file.deletions })),
-    next_page: input.page < 30 ? page.nextPage : null, truncated: input.page >= 30 && page.nextPage !== null };
+    next_page: lastPage ? null : page.nextPage, truncated };
 }
 /**
  * 두 커밋의 트리를 직접 비교한 변경 목록 (CR-132, `listing=tree`).
