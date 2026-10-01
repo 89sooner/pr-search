@@ -196,6 +196,8 @@ export interface TlsRequest {
   readonly body?: string;
   /** `null`이면 client 인증서 없이 연결한다. */
   readonly identity: TlsIdentity | null;
+  /** 요청을 도중에 끊는다 (CR-138). */
+  readonly signal?: AbortSignal;
 }
 
 /** 실제 TLS 연결 하나로 요청 하나를 보낸다 (연결을 재사용하지 않는다). */
@@ -229,6 +231,12 @@ export function tlsRequest(port: number, serverCa: Buffer, input: TlsRequest): P
       },
     );
     request.on('error', reject);
+    if (input.signal !== undefined) {
+      const abort = (): void => { request.destroy(new DOMException('The client closed the request.', 'AbortError')); };
+      if (input.signal.aborted) abort();
+      else input.signal.addEventListener('abort', abort, { once: true });
+      request.on('close', () => { input.signal?.removeEventListener('abort', abort); });
+    }
     if (input.body !== undefined) request.write(input.body);
     request.end();
   });
@@ -338,6 +346,8 @@ export interface CallOptions {
   readonly replica?: number;
   readonly headers?: Record<string, string>;
   readonly method?: string;
+  /** 요청을 도중에 끊는다 (CR-138 — 클라이언트가 연결을 끊은 경우). */
+  readonly signal?: AbortSignal;
 }
 
 export interface SignInput {
@@ -706,6 +716,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<Harnes
         path: `${INTEGRATION_PREFIX}${path}`,
         headers: { ...(grant === null ? {} : { authorization: `Bearer ${grant}` }), ...callOptions.headers },
         identity: callOptions.identity === undefined ? tls.pipeDev : callOptions.identity,
+        ...(callOptions.signal === undefined ? {} : { signal: callOptions.signal }),
       });
     },
     post(path, body, callOptions = {}) {

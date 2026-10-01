@@ -22,11 +22,11 @@
     "pipe-integration-v1.openapi.yaml",
     "operation-map.json"
   ],
-  "contract_checksum": "2eb26b1f52b003e4dea808492e45524a2f18f3ebe6bfed18ceb87bfc4c13ce5e",
+  "contract_checksum": "cd830b5da3fd3ed75135249501fb272095c01d619047d128547f9175d96442eb",
   "files": [
     {
       "path": "CONTRACT_DIFF.md",
-      "sha256": "d6a213924b9150ddd1b8dbdf8b20590f269743da8e7beb24e0ed529aab7aa7a9",
+      "sha256": "dc028a8833aea036adcefd4c4bc0bc5ca415a7c689ff5b7c391e5178065ea048",
       "role": "guide — 제안 계약 PSI-1.0과 구현의 차이"
     },
     {
@@ -276,17 +276,17 @@
     },
     {
       "path": "pipe-integration-v1.openapi.yaml",
-      "sha256": "c036dd2a78fe79fd4aa175d76c0154de08e203a6d766cff2f8ebb9c5a20bd583",
+      "sha256": "3e1c2056e2b92eb54a82317865740685a256e7d24300d6fce9e3a9ae18913556",
       "role": "contract — 경로·요청·응답·오류 스키마 (정본)"
     },
     {
       "path": "reference/source-complete.d.mts",
-      "sha256": "5323fd4d926f458e3893ccf52f702429a3f1f492b7cf6783f40a6bc3dd434aec",
+      "sha256": "6e71a64d85cb1afe01062d049ef31aaa72855612bd7c042e9d26402eee1b0e99",
       "role": "reference — source 조회를 끝까지 읽는 반복 호출 참고 구현 (CR-138)"
     },
     {
       "path": "reference/source-complete.mjs",
-      "sha256": "c5ad9bb163f6ed6bc1c2a01017b5dc03bd0561507ac6b0c01f51ad1af0808ecf",
+      "sha256": "b6a5b917e8434e0cdda97b69cf0e5b74a7d630ea255935e579a601de1ad58fcf",
       "role": "reference — source 조회를 끝까지 읽는 반복 호출 참고 구현 (CR-138)"
     },
     {

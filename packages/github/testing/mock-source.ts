@@ -73,6 +73,11 @@ export interface MockSourceOptions {
   readonly recursiveLimit?: number;
   /** 재귀 트리 응답을 늦추는 시간(ms) (CR-133). 호출 기한을 넘긴 재귀 목록이 걷기로 넘어가는지 본다. 기본 0. */
   readonly recursiveDelayMs?: number;
+  /**
+   * 요청 하나를 GitHub 대신 실패시킨다 (CR-138 — 한도·일시 장애 시험). 저장소 뒤의 경로(쿼리 포함, 예: `/git/blobs/<sha>`)와
+   * `Accept`를 받아 상태(와 헤더)를 돌려주면 그 응답으로 끝내고, `undefined`면 평소대로 답한다.
+   */
+  readonly fail?: (request: { readonly path: string; readonly accept: string }) => { readonly status: number; readonly headers?: Readonly<Record<string, string>> } | undefined;
 }
 
 export interface MockRawRead { readonly path: string; bytesSent: number; closedEarly: boolean; finished: boolean }
@@ -357,6 +362,8 @@ export function handleMockSource(
     response.end(JSON.stringify(body));
     return true;
   };
+  const injected = options.fail?.({ path: `${rest}${url.search}`, accept });
+  if (injected !== undefined) return send(injected.status, { message: 'Injected failure' }, { ...injected.headers });
   const notFound = (): true => send(404, { message: 'Not Found' });
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'));
   const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get('per_page') ?? '30')));

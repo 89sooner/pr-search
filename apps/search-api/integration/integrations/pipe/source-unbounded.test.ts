@@ -12,7 +12,7 @@ import type { SourceComparison, SourceFile, SourceTree } from '@prs/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { generateTestKeyPair, startMockGhe, type MockGhe } from '../../../../../packages/github/testing/mock-ghe.js';
 import { buildMockSource, type MockSourceRepository } from '../../../../../packages/github/testing/mock-source.js';
-import { getAllPaths, getCompleteDiffFiles, getCompleteFile, getCompleteHistory, getCompleteTree } from '../../../../../handoff/pipe-search-integration/v1/reference/source-complete.mjs';
+import { SourceReadError, getAllPaths, getCompleteDiffFiles, getCompleteFile, getCompleteHistory, getCompleteTree } from '../../../../../handoff/pipe-search-integration/v1/reference/source-complete.mjs';
 import { BILLING, PAYMENTS, USER_A, startHarness, type Harness } from './fixtures.js';
 
 const keys = generateTestKeyPair();
@@ -56,6 +56,9 @@ function source(): MockSourceRepository {
 
 let h: Harness;
 let ghe: MockGhe;
+/** 하네스가 요청마다 쓰는 리더. §24 시험이 실패를 주입하는 GHE 대역의 리더로 잠시 바꾼다. */
+let active: GitHubSourceReader;
+let normal: GitHubSourceReader;
 let repo: MockSourceRepository;
 /** 큰 파일·디렉터리가 들어온 커밋. */
 let files: string;
@@ -79,8 +82,9 @@ beforeAll(async () => {
   repo = source();
   files = repo.commitShas[HISTORY]!;
   ghe = await startMockGhe({ source: { repositories: [repo], rawChunkBytes: 100_003 } });
-  const reader = readerOf(ghe);
-  h = await startHarness({ sourceReader: () => reader });
+  normal = readerOf(ghe);
+  active = normal;
+  h = await startHarness({ sourceReader: () => active });
   h.scopes.set(USER_A.userId, [PAYMENTS, BILLING]);
   await h.resetScopeCache();
 }, 240_000);
@@ -88,6 +92,93 @@ beforeAll(async () => {
 afterAll(async () => {
   await h?.close();
   await ghe?.close();
+});
+
+/** §24 시험용: `mock`의 리더로 잠시 바꿔 `work`를 돌리고, 끝나면 되돌리고 대역을 닫는다. */
+async function withGhe<T>(mock: MockGhe, work: () => Promise<T>): Promise<T> {
+  active = readerOf(mock);
+  try { return await work(); } finally { active = normal; await mock.close(); }
+}
+/** 원시 본문 읽기(`/git/blobs/…`, raw 미디어 타입)만 센다. 파일 메타(Contents)는 세지 않는다. */
+const rawBlob = (request: { path: string; accept: string }): boolean => request.path.startsWith('/git/blobs/') && request.accept.includes('raw');
+
+describe('CR-138 PIPE §24 — 한도·일시 장애·연결 끊김에서도 받은 것을 버리지 않고 끝까지 (실제 mTLS → 실제 전송 → GHE 대역)', () => {
+  it('CR-138 FR-SRC-003 GHE가 창 읽기 도중 429(Retry-After)와 502를 주면 PIPE 응답도 429·502이고, 참고 구현은 그 창만 다시 불러 원문과 같은 본문을 얻는다', async () => {
+    let raw = 0;
+    const faulty = await startMockGhe({ source: { repositories: [repo], rawChunkBytes: 100_003, fail: (request) => {
+      if (!rawBlob(request)) return undefined;
+      raw += 1;
+      if (raw === 2) return { status: 429, headers: { 'retry-after': '1' } };
+      if (raw === 4) return { status: 502 };
+      return undefined;
+    } } });
+    await withGhe(faulty, async () => {
+      const grant = await h.grantFor(USER_A, { contextId: 'ctx-cr138-retry-0001' });
+      const seen: { path: string; status: number; retryAfter: string | undefined }[] = [];
+      const request = async (path: string) => {
+        const response = await h.get(path, grant);
+        seen.push({ path, status: response.status, retryAfter: response.headers['retry-after'] as string | undefined });
+        return { status: response.status, headers: response.headers as Record<string, string>, body: response.body === '' ? null : JSON.parse(response.body) as unknown };
+      };
+      const waits: number[] = [];
+      const whole = await getCompleteFile(request, { repository: 'acme/payments', revision: files, path: 'big.txt' }, { sleep: async (ms) => { waits.push(ms); await new Promise((resolve) => setTimeout(resolve, ms)); } });
+      expect(whole.status).toBe('text');
+      expect(whole.text === BIG).toBe(true);
+      const failures = seen.filter((one) => one.status !== 200);
+      expect(failures.map((one) => one.status)).toEqual([429, 502]);
+      expect(Number(failures[0]!.retryAfter)).toBeGreaterThanOrEqual(1);
+      expect(waits[0]).toBeGreaterThanOrEqual(1000);
+      // 실패한 창만 같은 위치에서 다시 불렀다 — 앞 창을 다시 읽지 않았다.
+      for (const failure of failures) expect(seen.filter((one) => one.path === failure.path).map((one) => one.status)).toEqual([failure.status, 200]);
+      expect(new Set(seen.map((one) => one.path)).size).toBe(whole.windows);
+    });
+  });
+
+  it('CR-138 FR-SRC-003 장애가 이어져 멈춰도 받은 창은 오류의 resume에 남고, 그것으로 멈춘 창부터 이어 원문과 같은 본문을 얻는다', async () => {
+    let raw = 0;
+    let down = true;
+    const faulty = await startMockGhe({ source: { repositories: [repo], rawChunkBytes: 100_003, fail: (request) => {
+      if (!rawBlob(request)) return undefined;
+      raw += 1;
+      return down && raw >= 3 ? { status: 503 } : undefined;
+    } } });
+    await withGhe(faulty, async () => {
+      const grant = await h.grantFor(USER_A, { contextId: 'ctx-cr138-retry-0002' });
+      const log: string[] = [];
+      const error = await getCompleteFile(pipe(grant, log), { repository: 'acme/payments', revision: files, path: 'big.txt' }, { attempts: 2, sleep: async () => undefined }).then(() => null, (caught: unknown) => caught);
+      expect(error).toBeInstanceOf(SourceReadError);
+      const stopped = error as SourceReadError;
+      expect(stopped.status).toBe(502);
+      const resume = stopped.resume as { offset: number; parts: string[] };
+      expect(resume.parts).toHaveLength(2);
+      expect(resume.offset).toBe(Buffer.byteLength(resume.parts.join('')));
+      expect(BIG.startsWith(resume.parts.join(''))).toBe(true);
+      down = false;
+      const before = log.length;
+      const whole = await getCompleteFile(pipe(grant, log), { repository: 'acme/payments', revision: files, path: 'big.txt' }, { resume: stopped.resume! });
+      expect(whole.text === BIG).toBe(true);
+      expect(log[before]).toContain(`offset=${String(resume.offset)}`);
+      expect(log.slice(before).some((path) => path.includes('offset=0&') || path.endsWith('offset=0'))).toBe(false);
+    });
+  });
+
+  it('CR-138 FR-SRC-003 PIPE 클라이언트가 창을 받는 도중 연결을 끊으면 search-api가 GHE 원시 전송도 끊는다', async () => {
+    const slow = await startMockGhe({ source: { repositories: [repo], rawChunkBytes: 65_536, rawDelayMs: 40 } });
+    await withGhe(slow, async () => {
+      const grant = await h.grantFor(USER_A, { contextId: 'ctx-cr138-cancel-0001' });
+      const client = new AbortController();
+      const pending = h.get(`/read/source/acme%2Fpayments/file?path=big.txt&revision=${files}&offset=${String(2 * MIB)}`, grant, { signal: client.signal }).then(() => 'answered', (error: unknown) => (error instanceof Error ? error.name : 'failed'));
+      for (let i = 0; i < 150 && !slow.rawReads().some((read) => read.bytesSent > 0); i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      client.abort();
+      expect(await pending).toBe('AbortError');
+      const read = slow.rawReads().at(-1)!;
+      for (let i = 0; i < 150 && !read.closedEarly; i += 1) await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(read).toMatchObject({ closedEarly: true, finished: false });
+      // 2 MiB 위치의 창은 앞 3 MiB를 받아야 끝난다 — 그 전에 끊겼다.
+      expect(read.bytesSent).toBeLessThan(3 * MIB);
+    });
+  });
 });
 
 describe('CR-138 PIPE read.source.file — 크기·줄 수로 거절하지 않고 끝까지 (실제 mTLS → 실제 전송 → GHE 대역)', () => {
@@ -181,10 +272,12 @@ describe('CR-138 PIPE read.source.diff — GitHub의 3,000개 뒤도 참고 구�
     expect(new Set(bigger.files.map((file: { path: string }) => file.path))).toEqual(expected(1));
   });
 
-  it('CR-138 FR-SRC-003 정확히 3,000개 — PR은 GitHub 목록만으로 끝나고, 커밋은 트리 비교로 한 번 더 확인해도 같은 3,000개다', async () => {
+  it('CR-138 FR-SRC-003 정확히 3,000개 — GitHub 목록의 30쪽이 가득 차 PR·커밋 모두 트리 비교로 한 번 더 확인하고, 더해지는 파일 없이 같은 3,000개다', async () => {
     const grant = await h.grantFor(USER_A, { contextId: 'ctx-cr138-diff-0002' });
     const pr = await getCompleteDiffFiles(pipe(grant), { repository: 'acme/payments', pr: 933 });
-    expect(pr.listing).toBe('rest');
+    expect(pr.listing).toBe('rest+tree');
+    expect(pr.files).toHaveLength(3000);
+    expect(pr.files.every((file: { additions: number | null }) => file.additions !== null)).toBe(true);
     expect(new Set(pr.files.map((file: { path: string }) => file.path))).toEqual(expected(2));
     const commit = await getCompleteDiffFiles(pipe(grant), { repository: 'acme/payments', commit: repo.commitShas.at(-1)! });
     expect(commit.listing).toBe('rest+tree');

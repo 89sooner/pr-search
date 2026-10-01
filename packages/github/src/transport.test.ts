@@ -5,6 +5,8 @@
  * 끝나는지 본다. 실제 HTTP 서버에서의 동작은 통합 시험(`apps/search-api/integration/source/`)이 본다.
  */
 
+import v8 from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { GitHubApiError } from './errors.js';
 import { RequestScheduler } from './scheduler.js';
@@ -117,6 +119,40 @@ describe('CR-132 FR-SRC-003 원시 창', () => {
     await expect(transport(slow, { requestTimeoutMs: 50 }).getRawWindow(request, { offset: 0, length })).resolves.toMatchObject({ eof: true });
     // 같은 응답이 JSON 조회(기본 기한)로는 시간 초과다.
     await expect(transport(slow, { requestTimeoutMs: 50 }).get({ org: 'acme', path: '/x' })).rejects.toMatchObject({ kind: 'timeout' });
+  });
+});
+
+describe('CR-138 FR-SRC-003 원시 창의 메모리 (DEV-803)', () => {
+  it('창을 다 읽으면 받은 조각을 붙잡지 않는다 — 호출 신호의 기한이 아직 남아 있어도', async () => {
+    // 강제 GC로 「아직 닿는 메모리」만 남긴다. 플래그 없이 띄운 시험 작업자에서도 쓸 수 있는 방법이다.
+    v8.setFlagsFromString('--expose_gc');
+    const gc = runInNewContext('gc') as () => void;
+    const CHUNK = 256 * 1024;
+    const WINDOW = 1024 * 1024;
+    const SIZE = 16 * WINDOW;
+    const fetchImpl = (async () => {
+      let sent = 0;
+      return new Response(new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent >= SIZE) { controller.close(); return; }
+          controller.enqueue(new Uint8Array(CHUNK).fill(0x61));
+          sent += CHUNK;
+        },
+      }, { highWaterMark: 0 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = transport(fetchImpl);
+    gc();
+    const before = process.memoryUsage().arrayBuffers;
+    let received = 0;
+    for (let offset = 0; offset < SIZE; offset += WINDOW) {
+      const window = await client.getRawWindow(request, { offset, length: WINDOW });
+      received += window.bytes.length;
+    }
+    expect(received).toBe(SIZE);
+    // 창 k는 앞 k MiB를 다시 받으므로 모두 136 MiB를 받았다. 각 창 호출의 신호는 기한(10초 + 바이트 몫)까지 살아 있다 —
+    // 수정 전에는 그 신호에 걸린 끝나지 않는 promise가 경합마다 받은 조각을 붙잡아, 기한이 끝날 때까지 136 MiB가 남았다.
+    gc();
+    expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(4 * WINDOW);
   });
 });
 

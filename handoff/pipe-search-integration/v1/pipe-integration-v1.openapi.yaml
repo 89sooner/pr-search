@@ -568,8 +568,8 @@ paths:
       description: >-
         `pr`과 `commit` 중 정확히 하나. 페이지마다 파일 100개, 30페이지까지다 — GitHub가 변경 파일을 3000개까지만 나열하는 원천
         상한이다(operation map의 upstream_limits). PR 비교는 merge-base 기준이며 조회 전후 base/head가 움직이면 원본의
-        `SOURCE_CHANGED` 409다. 30번째 페이지의 `truncated`가 참이면 GitHub 목록이 잘렸을 수 있다(CR-138: 다음 링크, PR은
-        GitHub의 전체 수 `changed_files`가 3000 초과, 커밋은 30번째 페이지가 가득 참) — 그때 `listing=tree`로 끝까지 잇는다.
+        `SOURCE_CHANGED` 409다. 30번째 페이지의 `truncated`가 참이면 GitHub 목록이 잘렸을 수 있다(CR-138: 다음 링크, 30번째
+        페이지가 가득 참(PR·커밋), PR은 GitHub의 전체 수 `changed_files`가 3000 초과) — 그때 `listing=tree`로 끝까지 잇는다.
         CR-132: `related=all`은 연결 PR을 다섯 개에서 자르지 않는다. `listing=tree`는 `pr`·`commit` 대신 고정한 `head`·`base`의
         트리를 직접 비교한 목록이다(3000개를 넘는 변경을 끝까지, 줄 수·이름 변경 없음, `next_after`가 null이 될 때까지).
       parameters:
@@ -3827,9 +3827,9 @@ components:
         커밋(부모가 없으면 base null)이다. pull_requests는 pr 모드면 그 PR 하나, commit 모드면 연결 PR 최대 5개다(related=all이면
         전부, CR-132). pull_requests_unavailable은 계약 타입에서는 선택이지만 코드는 언제나 싣는다(pr 모드는 언제나 false). page
         30에서 멈추며 next_page는 null이다(GitHub의 3,000개 원천 상한). truncated는 30번째 페이지에서 GitHub 목록이 잘렸을 수
-        있을 때 true다 — GitHub가 다음 링크를 주었거나, PR은 전체 수(changed_files)가 3,000을 넘거나, 커밋은 전체 수를 모르므로
-        30번째 페이지가 가득 찼을 때다(CR-138, DEV-793 — 전에는 다음 링크만 보아 잘린 목록도 false였다. 정확히 3,000개인 커밋도
-        true이며 listing=tree가 같은 목록을 준다). true면 listing=tree로 끝까지 읽는다. listing=tree(CR-132)는 두 트리를 직접
+        있을 때 true다 — GitHub가 다음 링크를 주었거나, 30번째 페이지가 가득 찼거나(PR·커밋 모두), PR의 전체 수(changed_files)가
+        3,000을 넘을 때다(CR-138, DEV-793 — 전에는 다음 링크만 보아 잘린 목록도 false였다. 정확히 3,000개여도 true이며
+        listing=tree가 같은 목록을 준다. changed_files는 true를 더할 뿐 거르지 않는다). true면 listing=tree로 끝까지 읽는다. listing=tree(CR-132)는 두 트리를 직접
         비교한 목록이다 — listing·next_after가 있고, truncated는 GitHub가 디렉터리 목록을 잘랐다는 뜻, pull_requests는 빈 배열이다.
         (근거: packages/contracts/src/source.ts:15-21, apps/search-api/src/source/service.ts:205-239, apps/search-api/src/source/service.ts:248-261)
       required: [repository, base, head, commit, files, next_page, truncated, pull_requests, pull_requests_unavailable]

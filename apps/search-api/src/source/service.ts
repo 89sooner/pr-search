@@ -195,7 +195,12 @@ export async function sourceFileWindow(reader: GitHubSourceReader, ref: RepoRef,
   } catch (error) {
     if (error instanceof GitHubApiError && error.kind === 'not_found') { await reader.commit(ref, revision, options); return { ...base, reason: 'This path is not available at this revision.' }; }
     if (error instanceof GitHubApiError && error.kind === 'auth' && error.status === 403 && options.signal?.aborted !== true) {
-      const blob = await blobAt(reader, ref, revision, path, options).catch(() => null);
+      // 걷기가 경로를 찾지 못하거나(권한·없음) 그 경로가 blob이 아니면 원래 403을 그대로 올린다. 한도·취소·기한·일시 장애는
+      // 걷기의 오류를 올린다 — 삼키면 429(`Retry-After`)나 취소가 권한 오류(503)로 바뀐다 (CR-138 리뷰).
+      const blob = await blobAt(reader, ref, revision, path, options).catch((walk: unknown) => {
+        if (walk instanceof GitHubApiError && (walk.kind === 'auth' || walk.kind === 'not_found')) return null;
+        throw walk;
+      });
       if (blob !== null && blob.size > GITHUB_BLOB_MAX_BYTES) return { ...base, size: blob.size, sha: blob.sha, status: 'too_large', reason: UPSTREAM_TOO_LARGE };
     }
     throw error;
@@ -261,10 +266,12 @@ export async function sourceComparison(reader: GitHubSourceReader, ref: RepoRef,
   const files = Array.isArray(page.body) ? page.body : page.body.files ?? [];
   if (input.pr !== undefined) { const latest = await reader.pullRequest(ref, input.pr, options); if (latest.head.sha !== head || latest.base.sha !== baseTip) throw new SourceSnapshotChanged('Pull request changed'); }
   // CR-138 (DEV-793): GitHub는 3,000개에서 멈추고 마지막(30번째) 페이지에 다음 링크를 주지 않는다 — 링크만 보면 잘린 목록도
-  // 완전해 보인다. PR은 전체 수로 가르고, 커밋은 전체 수를 모르므로 마지막 페이지가 가득하면 잘렸을 수 있다고 본다(정확히
-  // 3,000개인 커밋도 참이다 — 트리 비교 목록이 같은 3,000개를 준다). 참이면 호출자는 `listing=tree`로 끝까지 잇는다.
+  // 완전해 보인다. 마지막 페이지가 가득하거나 PR의 전체 수가 3,000을 넘으면 잘렸을 수 있다고 본다. 전체 수는 거르는 데
+  // 쓰지 않고 더하는 데만 쓴다 — 실제 GHES가 경계에서 주는 `changed_files`는 확인하지 못했으므로, 그 값이 틀려도 목록이
+  // 조용히 끊기지 않게 한다(정확히 3,000개면 트리 비교를 한 번 더 하고, 그 목록이 같은 3,000개를 준다). 참이면 호출자는
+  // `listing=tree`로 끝까지 잇는다.
   const lastPage = input.page >= GITHUB_CHANGED_FILES_PAGES;
-  const truncated = lastPage && (page.nextPage !== null || (total !== undefined ? total > GITHUB_CHANGED_FILES_MAX : files.length >= GITHUB_CHANGED_FILES_PER_PAGE));
+  const truncated = lastPage && (page.nextPage !== null || files.length >= GITHUB_CHANGED_FILES_PER_PAGE || (total !== undefined && total > GITHUB_CHANGED_FILES_MAX));
   return { repository: `${ref.owner}/${ref.repo}`, base, head, commit: gitCommit(commit), pull_requests: pullRequests, pull_requests_unavailable: associationsUnavailable,
     files: files.map(file => ({ path: file.filename, previous_path: file.previous_filename ?? null, status: file.status, additions: file.additions, deletions: file.deletions })),
     next_page: lastPage ? null : page.nextPage, truncated };

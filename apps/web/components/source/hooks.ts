@@ -211,8 +211,11 @@ export function useChangedFiles(repository: string, target: { readonly pr?: numb
             const page: SourceComparison = await fetchSourceRetrying<SourceComparison>(sourceUrl(repository, 'diff', { listing: 'tree', head: pinned.head, base: pinned.base ?? undefined, after: own.cursor.after ?? undefined }), abort.signal, retry);
             if (abort.signal.aborted) return;
             if (page.head !== pinned.head || page.base !== pinned.base) { publish({ loading: false, changed: true, error: 'The compared revisions changed. Close and reopen the comparison.' }); return; }
+            // Only the files the tree comparison adds lack line counts. When it adds none (for example a change of exactly
+            // 3,000 files, which fills GitHub's last page), the list is GitHub's own and must not say otherwise.
+            const before = own.list;
             own.list = addComparedFiles(own.list, page.files);
-            own.compared = true;
+            own.compared ||= own.list !== before;
             own.incomplete ||= page.truncated;
             own.cursor = page.next_after ? { phase: 'tree', after: page.next_after } : { phase: 'done' };
           }
@@ -271,6 +274,45 @@ function rowAt(offsets: Float64Array, y: number): number {
   }
   return low;
 }
+/** Smallest index i with offsets[i] >= y. */
+function rowFrom(offsets: Float64Array, y: number): number {
+  const index = rowAt(offsets, y);
+  return offsets[index]! < y ? Math.min(offsets.length - 1, index + 1) : index;
+}
+
+/**
+ * The tallest scroll extent a virtualized list asks the browser for (CR-138, DEV-804). Browsers cap an element's size —
+ * Chromium at 2^25 px (33,554,432), Firefox near 17.9 million — so a list drawn taller than that cannot be scrolled to its
+ * end: a 1,955,858-line file stopped at line 1,597,830 in Chromium. A taller list is drawn compressed to this extent: the
+ * scroll position maps onto the whole list and only the rows near the viewport keep their own height. Above it (about
+ * 714,000 code lines) one wheel step or Page Down moves proportionally more lines; dragging the scroll bar reaches every
+ * part, and arrow keys, Find, change navigation and line jumps still reach every line.
+ */
+export const MAX_SCROLL_EXTENT = 15_000_000;
+
+/**
+ * Where the viewport's top falls in the whole list (`total` tall) for a scroll position over the rows (`scrolled`,
+ * negative while the rows start below the scroller's edge). One to one when the list fits the extent. A compressed list
+ * maps one to one over the first and last viewport of scrolling — so every row in view can be drawn right up to either
+ * end — and proportionally in between; past the rows' end (content after them) it is one to one again.
+ */
+export function listTopAt(scrolled: number, total: number, viewport: number): number {
+  const extent = Math.min(total, MAX_SCROLL_EXTENT);
+  if (scrolled <= 0 || total <= extent) return scrolled;
+  const range = extent - viewport; const edge = Math.min(viewport, range / 4);
+  if (scrolled <= edge) return scrolled;
+  if (scrolled >= range - edge) return scrolled + total - extent;
+  return edge + ((scrolled - edge) * (total - viewport - 2 * edge)) / (range - 2 * edge);
+}
+/** The scroll position that `listTopAt` maps onto `top` (its inverse). */
+export function scrollTopFor(top: number, total: number, viewport: number): number {
+  const extent = Math.min(total, MAX_SCROLL_EXTENT);
+  if (top <= 0 || total <= extent) return top;
+  const range = extent - viewport; const edge = Math.min(viewport, range / 4);
+  if (top <= edge) return top;
+  if (top >= total - viewport - edge) return top - (total - extent);
+  return edge + ((top - edge) * (range - 2 * edge)) / (total - viewport - 2 * edge);
+}
 
 export interface VirtualWindow { readonly start: number; readonly end: number; readonly padTop: number; readonly padBottom: number; readonly virtual: boolean }
 /**
@@ -302,17 +344,40 @@ export function useVirtualWindow(scroller: RefObject<HTMLElement | null>, offset
     return () => { element.removeEventListener('scroll', update); observer?.disconnect(); };
   }, [scroller, virtual, axis, start]);
   if (!virtual) return { start: 0, end: count, padTop: 0, padBottom: 0, virtual };
-  const overscan = LINE_HEIGHT * 40;
-  const first = rowAt(offsets, Math.max(0, view.top - overscan));
-  const end = Math.min(count, rowAt(offsets, Math.max(0, view.top + view.height + overscan)) + 1);
-  return { start: first, end, padTop: offsets[first]!, padBottom: offsets[count]! - offsets[end]!, virtual };
+  return windowAt(offsets, view.top, view.height);
 }
 
-/** Scrolls so that row `index` sits in the middle of the scroller (works whether or not the row is rendered). */
+/**
+ * The rows to draw for a scroll position (`scrolled`: how far the rows' start has scrolled past the scroller's edge,
+ * negative while they start below it) and the spacers around them. Up to `MAX_SCROLL_EXTENT` this is the plain window:
+ * spacers are the heights of the rows left out. Above it the list is compressed (DEV-804): `listTopAt` maps the scrolled
+ * position onto the whole list, the drawn rows sit where that mapping puts the viewport, and the spacers fill the rest of
+ * the compressed extent exactly — so `padTop` + drawn rows + `padBottom` is always min(total, MAX_SCROLL_EXTENT).
+ */
+export function windowAt(offsets: Float64Array, scrolled: number, viewport: number): VirtualWindow {
+  const count = offsets.length - 1;
+  const total = offsets[count]!;
+  const extent = Math.min(total, MAX_SCROLL_EXTENT);
+  const top = listTopAt(scrolled, total, viewport);
+  const overscan = LINE_HEIGHT * 40;
+  // A row i is drawn at scrolled + offsets[i] - top. The overscan may not reach past the drawn extent at either end — a
+  // spacer would have to be negative — which only limits it near the ends of a compressed list.
+  const first = Math.max(rowAt(offsets, Math.max(0, top - overscan)), rowFrom(offsets, top - Math.max(0, scrolled)));
+  const end = Math.max(first, Math.min(count, rowAt(offsets, Math.max(0, top + viewport + overscan)) + 1, rowAt(offsets, top + extent - Math.max(0, scrolled))));
+  const padTop = Math.max(0, Math.max(0, scrolled) - Math.max(0, top) + offsets[first]!);
+  return { start: first, end, padTop, padBottom: Math.max(0, extent - padTop - (offsets[end]! - offsets[first]!)), virtual: true };
+}
+
+/**
+ * Scrolls so that row `index` sits in the middle of the scroller (works whether or not the row is rendered). A compressed
+ * list (CR-138) scrolls to the position that `listTopAt` maps onto that row.
+ */
 export function scrollToRow(scroller: HTMLElement | null, offsets: Float64Array, index: number, axis: 'x' | 'y' = 'y'): void {
   if (scroller === null || index < 0 || index >= offsets.length - 1) return;
-  if (axis === 'x') scroller.scrollLeft = Math.max(0, offsets[index]! - scroller.clientWidth / 2);
-  else scroller.scrollTop = Math.max(0, offsets[index]! - scroller.clientHeight / 2);
+  const size = axis === 'x' ? scroller.clientWidth : scroller.clientHeight;
+  const position = scrollTopFor(Math.max(0, offsets[index]! - size / 2), offsets[offsets.length - 1]!, size || 800);
+  if (axis === 'x') scroller.scrollLeft = position;
+  else scroller.scrollTop = position;
 }
 
 /** Whether the viewport is at most `width` px wide (the source dialogs switch layouts at 650px). */

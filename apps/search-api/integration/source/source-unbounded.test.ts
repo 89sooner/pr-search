@@ -382,10 +382,11 @@ describe('CR-138 FR-SRC-003 GitHub 목록이 3,000개에 닿으면 30쪽이 trun
     expect(new Set(listed)).toEqual(expectedPaths(2));
   });
 
-  it('CR-138 FR-SRC-003 정확히 3,000개 — PR은 changed_files로 완전함을 알아 truncated가 아니다, 커밋은 총수를 몰라 30쪽이 가득하면 truncated다(트리 비교가 같은 3,000개를 준다)', async () => {
+  it('CR-138 FR-SRC-003 정확히 3,000개 — PR·커밋 모두 30쪽이 가득하면 truncated다(전체 수로 거르지 않는다), 트리 비교가 같은 3,000개를 준다', async () => {
     const pr = await restPages({ pr: 33 });
     expect(pr.files).toHaveLength(3000);
-    expect(pr.last.truncated).toBe(false);
+    expect(pr.last.truncated).toBe(true);
+    expect(new Set(await treeListing(pr.last.base, pr.last.head))).toEqual(expectedPaths(3));
     const commit = await restPages({ commit: repos.changes.commitShas[3]! });
     expect(commit.files).toHaveLength(3000);
     expect(commit.last.truncated).toBe(true);

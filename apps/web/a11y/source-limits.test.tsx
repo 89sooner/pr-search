@@ -133,6 +133,17 @@ describe('CR-132 FR-SRC-003 Diff reads whole files and never fails on the old bu
     expect(new URL(listingCalls[0]!, 'http://localhost').searchParams.get('base')).toBe(BASE);
   }, 90_000);
 
+  it('CR-138 FR-SRC-003 a change of exactly 3,000 files fills GitHub\'s last page: the tree comparison is read but adds nothing, so the list does not claim missing counts', async () => {
+    const changes = Array.from({ length: 3_000 }, (_, i) => ({ path: `pkg/f${String(i).padStart(4, '0')}.c`, previous_path: null, status: 'added', additions: 1, deletions: 0 }));
+    const treeListing = changes.slice(0, 3).map((change) => ({ ...change, additions: null, deletions: null }));
+    const { calls } = stubApi({ changes, treeListing, pageSize: 3_000 });
+    render(<DiffModal target={{ repository: REPO, commit: HEAD }} onClose={() => undefined} />);
+    await waitFor(() => { expect(calls.filter((call) => call.includes('listing=tree'))).toHaveLength(2); }, { timeout: 20_000 });
+    await waitFor(() => { expect(screen.queryByText(/Loading changed files/)).not.toBeInTheDocument(); }, { timeout: 20_000 });
+    expect(screen.getByRole('heading', { name: /Changed files/ }).textContent).toBe('Changed files 3,000');
+    expect(screen.queryByText(/their line counts and renames are not available/)).not.toBeInTheDocument();
+  }, 90_000);
+
   it('CR-138 FR-SRC-003 loading the changed files can be stopped and continued from the next page', async () => {
     const changes = Array.from({ length: 250 }, (_, i) => ({ path: `src/f${String(i).padStart(3, '0')}.c`, previous_path: null, status: 'modified', additions: 1, deletions: 1 }));
     stubApi({ changes });
@@ -158,6 +169,32 @@ describe('CR-132 FR-SRC-003 Diff reads whole files and never fails on the old bu
     expect(screen.getByRole('heading', { name: /Changed files/ }).textContent).toBe('Changed files 250');
     expect(screen.queryByText(/Loading changed files/)).not.toBeInTheDocument();
   });
+
+  it('CR-138 FR-SRC-003 stopped while GitHub asks to wait, the list continues from the waiting page and the cancelled wait does not come back', async () => {
+    const changes = Array.from({ length: 250 }, (_, i) => ({ path: `src/f${String(i).padStart(3, '0')}.c`, previous_path: null, status: 'modified', additions: 1, deletions: 1 }));
+    stubApi({ changes });
+    const real = globalThis.fetch;
+    let limited = true;
+    const pageCalls: string[] = [];
+    vi.stubGlobal('fetch', (input: string) => {
+      if (input.includes('/diff?')) pageCalls.push(new URL(input, 'http://localhost').searchParams.get('page') ?? '');
+      if (limited && input.includes('/diff?') && input.includes('page=2')) return Promise.resolve(new Response(JSON.stringify({ error: { code: 'SOURCE_RATE_LIMITED', message: 'GitHub is rate limited. Try again later.' } }), { status: 429, headers: { 'retry-after': '1' } }));
+      return real(input);
+    });
+    const user = userEvent.setup();
+    render(<DiffModal target={{ repository: REPO, commit: HEAD }} onClose={() => undefined} />);
+    expect(await screen.findByText(/GitHub asked to wait — trying again in 1 s\./, undefined, { timeout: 5000 })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Stop loading files' }));
+    expect(await screen.findByText('Stopped after 100 files, so this list is not complete.')).toBeInTheDocument();
+    limited = false;
+    await user.click(screen.getByRole('button', { name: 'Continue loading files' }));
+    await waitFor(() => { expect(screen.getByRole('heading', { name: /Changed files/ }).textContent).toBe('Changed files 250'); }, { timeout: 5000 });
+    expect(pageCalls).toEqual(['1', '2', '2', '3']);
+    // The cancelled wait would have asked again after 1 s: it must not, and the finished list stays as it is.
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+    expect(pageCalls).toEqual(['1', '2', '2', '3']);
+    expect(screen.getByRole('heading', { name: /Changed files/ }).textContent).toBe('Changed files 250');
+  }, 30_000);
 
   it('FR-SRC-003 Diff with a pending load can be cancelled and retried, and never claims "no differences"', async () => {
     stubApi({ files: { [`${BASE}:a.c`]: 'a\n', [`${HEAD}:a.c`]: 'b\n' } });
@@ -279,6 +316,39 @@ describe('CR-138 FR-SRC-004 Time-lapse analyzes all history, with progress, and 
     // Revision 4 is read again to continue the comparison; 1–3 are not.
     expect(fileCalls.slice().sort()).toEqual(['4', '5', '6', '7', '8']);
   }, 60_000);
+
+  it('CR-138 FR-SRC-004 the revision list reads older revisions by itself when its end scrolls into view — no button press', async () => {
+    const newest = Array.from({ length: 30 }, (_, i) => commit(`${String(44 - i).padStart(2, '0')}`.padEnd(40, 'e'), `rev ${String(44 - i)}`));
+    const older = Array.from({ length: 15 }, (_, i) => commit(`${String(14 - i).padStart(2, '0')}`.padEnd(40, 'e'), `rev ${String(14 - i)}`));
+    const files: Record<string, string> = {};
+    [...newest, ...older].forEach((item) => { files[`${item.sha}:app.c`] = `stable\n${item.message}\n`; });
+    const { calls } = stubApi({ files, commits: newest, olderCommits: older });
+    const observed: Element[] = [];
+    /** Reports every observed element as visible, as a browser does when the reader scrolls to it. */
+    class Visible {
+      readonly callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) { this.callback = callback; }
+      observe(target: Element): void { observed.push(target); queueMicrotask(() => { this.callback([{ isIntersecting: true, target } as unknown as IntersectionObserverEntry], this as unknown as IntersectionObserver); }); }
+      unobserve(): void { /* nothing to stop */ }
+      disconnect(): void { /* nothing to stop */ }
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+    }
+    vi.stubGlobal('IntersectionObserver', Visible);
+    render(<TimeLapseModal repository={REPO} path="app.c" revision="main" onClose={() => undefined} />);
+    expect(await screen.findByText('All 45 revisions of this path are loaded.', undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(observed.some((element) => element.classList.contains('source-auto-load'))).toBe(true);
+    const olderCall = calls.find((call) => call.includes('/history?') && call.includes('page=2'))!;
+    expect(new URL(olderCall, 'http://localhost').searchParams.get('ref')).toBe(HEAD);
+  });
+
+  it('CR-138 FR-SRC-004 "Analyze all history" is not offered for a revision that is not pinned to a commit SHA', async () => {
+    const commits = [commit('9'.padStart(40, 'f'), 'rev 9')];
+    stubApi({ files: { [`${commits[0]!.sha}:app.c`]: 'stable\n' } });
+    render(<TimeLapseModal repository={REPO} path="app.c" revision="main" initialCommits={commits} nextPage={2} onClose={() => undefined} />);
+    await screen.findByText('stable', undefined, { timeout: 5000 });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Analysis range' }), { target: { value: 'history' } });
+    expect(screen.getByRole('button', { name: 'Analyze all history' })).toBeDisabled();
+  });
 });
 
 describe('CR-132 FR-SRC-001 the file tree lists a large directory page by page', () => {

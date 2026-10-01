@@ -157,6 +157,10 @@
 .source-changed-file-list--virtual small { margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .source-revisions--virtual button { height:84px; overflow:hidden; flex:none; }
 .source-revisions--virtual strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* CR-138 (DEV-804): a list taller than the browser allows is drawn compressed and its rows move on each scroll; keep the browser from re-anchoring them. */
+.source-code-scroll,.source-revisions,.source-changed-files { overflow-anchor:none; }
+/* CR-138: the end of the loaded revisions — older revisions load when it scrolls into view. */
+.source-auto-load { flex:none; min-width:1px; min-height:1px; }
 .source-list-limit { margin:12px 8px 0; padding:10px; border:1px solid var(--ui-border-default); border-radius:5px; background:var(--ui-surface-raised); color:var(--ui-text-secondary); font-size:11px; line-height:1.6; display:grid; gap:8px; }
 .source-list-limit p { margin:0; }
 .source-analysis-range select { padding:5px 8px; border:1px solid var(--ui-border-default); border-radius:5px; background:var(--ui-surface-raised); color:var(--ui-text-primary); font-size:11px; }

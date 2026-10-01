@@ -65,6 +65,17 @@ describe('CR-138 FR-SRC-003 남은 크기 제한은 GitHub API의 100MB뿐이다
     }
   });
 
+  it('CR-138 FR-SRC-003 Contents 403 뒤 트리를 걷다가 한도·취소에 걸리면 그 오류를 올린다 — 권한 오류(403)로 바꾸지 않는다', async () => {
+    const limited = new GitHubApiError('secondary_rate_limited', 'slow down', { status: 429 });
+    const { methods, reader } = oversizedReader(GITHUB_BLOB_MAX_BYTES + 1);
+    methods.tree.mockRejectedValueOnce(limited);
+    await expect(sourceFileWindow(reader, repo, SHA, 'assets/huge.bin', 0)).rejects.toBe(limited);
+    const cancelled = oversizedReader(GITHUB_BLOB_MAX_BYTES + 1);
+    const reason = new DOMException('The operation was aborted.', 'AbortError');
+    cancelled.methods.commit.mockRejectedValueOnce(reason);
+    await expect(sourceFileWindow(cancelled.reader, repo, SHA, 'assets/huge.bin', 0)).rejects.toBe(reason);
+  });
+
   it('CR-138 FR-SRC-003 한 창보다 큰 파일도 크기만으로 거절하지 않는다 — 첫 창과 next_offset이다', async () => {
     const content = Buffer.from(Array.from({ length: 70_000 }, (_, i) => `row ${String(i)} ${'y'.repeat(20)}\n`).join(''));
     expect(content.length).toBeGreaterThan(SOURCE_WINDOW_BYTES);
@@ -99,9 +110,13 @@ describe('CR-138 FR-SRC-003 GitHub 변경 목록의 마지막 페이지 (DEV-793
     expect([GITHUB_CHANGED_FILES_MAX, GITHUB_CHANGED_FILES_PER_PAGE, GITHUB_CHANGED_FILES_PAGES]).toEqual([3000, 100, 30]);
   });
 
-  it('CR-138 FR-SRC-003 PR은 전체 수(changed_files)로 가른다 — 3,000개를 넘으면 30쪽이 truncated, 정확히 3,000개면 아니다', async () => {
+  it('CR-138 FR-SRC-003 PR은 마지막 페이지가 가득하거나 전체 수(changed_files)가 3,000을 넘으면 30쪽이 truncated다 — 전체 수로 거르지 않는다', async () => {
     expect((await sourceComparison(comparisonReader({ files: full, nextPage: null, changedFiles: 3001 }), repo, { pr: 7, page: last })).truncated).toBe(true);
-    expect((await sourceComparison(comparisonReader({ files: full, nextPage: null, changedFiles: 3000 }), repo, { pr: 7, page: last })).truncated).toBe(false);
+    // 정확히 3,000개여도 마지막 페이지가 가득하면 참이다 — GHES가 경계에서 주는 changed_files를 확인하지 못했으므로 트리 비교로 한 번 더 본다.
+    expect((await sourceComparison(comparisonReader({ files: full, nextPage: null, changedFiles: 3000 }), repo, { pr: 7, page: last })).truncated).toBe(true);
+    // 마지막 페이지가 덜 찼어도 전체 수가 3,000을 넘으면 참이고, 둘 다 아니면 거짓이다.
+    expect((await sourceComparison(comparisonReader({ files: full - 1, nextPage: null, changedFiles: 3001 }), repo, { pr: 7, page: last })).truncated).toBe(true);
+    expect((await sourceComparison(comparisonReader({ files: full - 1, nextPage: null, changedFiles: 2999 }), repo, { pr: 7, page: last })).truncated).toBe(false);
     // 전체 수를 주지 않는 GitHub이면 커밋과 같이 가득 찬 마지막 페이지로 가른다.
     expect((await sourceComparison(comparisonReader({ files: full, nextPage: null }), repo, { pr: 7, page: last })).truncated).toBe(true);
   });
